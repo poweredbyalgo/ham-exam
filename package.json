@@ -5,8 +5,10 @@
   "description": "中国业余无线电操作技术能力验证智能练习系统",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/prepare-downloads.mjs",
     "build": "next build",
-    "start": "next start",
+    "serve:dist": "node scripts/serve-dist.mjs",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('.next',{recursive:true,force:true})\"",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "sync-data": "node dataset/tools/sync-data.mjs",

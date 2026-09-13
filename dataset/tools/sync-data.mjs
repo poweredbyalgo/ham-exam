@@ -9,8 +9,9 @@
  *   dataset/{A,B,C}.json  -> public/downloads/ham-exam-dataset-{A,B,C}.json (下载用)
  *   dataset/figures.json  -> public/downloads/ham-exam-figures.json
  *   public/figures/*.jpg  -> public/downloads/ham-exam-figures.zip
- *   dataset/pdf/*.pdf     -> public/downloads/crac-bank-{A,B,C}.pdf 与 附图标记 PDF
- *                         （由 /api/download/bank-pdf 按白名单读取并下发）
+ *   dataset/pdf/*.pdf     -> public/downloads/ham-exam-bank-{A,B,C,figures}.pdf
+ *                         （由 scripts/prepare-downloads.mjs 在构建前复制，
+ *                           本脚本只在 data/downloads.json 里记录下载地址）
  *
  * 附图文件由上游 dataset/tools/build_dataset.py 直接写入 public/figures/，
  * 本脚本只校验「题目引用 -> 文件存在」，不再复制图片，避免出现两份副本。
@@ -37,7 +38,7 @@ const DL_DIR = path.join(ROOT, "public", "downloads");
  * 题库原始 PDF 白名单：与 lib/downloads.ts 保持一致的 JS 副本。
  *
  * 本脚本是 ESM 且需能在没有 TypeScript 工具链时独立运行，故不直接 import
- * TS 文件；app/api/download/bank-pdf/route.ts 使用 lib/downloads.ts，
+ * TS 文件；lib/downloads.ts 是白名单的唯一事实来源，
  * dataset/tools/verify_dataset.py 会校验两份清单一致，防止漂移。
  */
 const BANK_PDFS = [
@@ -423,7 +424,10 @@ async function main() {
       "题目内容未改动；附图文件名统一小写，与题目 figure 字段对应。",
     pdfFiles: pdfFiles.map((f) => ({
       ...f,
-      url: `/api/download/bank-pdf?id=${f.id}`,
+      // 静态文件路径，不是服务端接口 —— 纯静态导出没有服务端，
+      // PDF 由 scripts/prepare-downloads.mjs 复制进 public/downloads/。
+      // 文件名约定见该脚本的 MAP，两处需同步。
+      url: `/downloads/ham-exam-bank-${f.id}.pdf`,
     })),
     processedFiles: processedFiles.map((f) => ({
       ...f,

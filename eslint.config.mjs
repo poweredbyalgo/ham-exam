@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    // 静态导出产物（npm run build -> dist/），压缩后的 bundle 不参与 lint
+    "dist/**",
     "next-env.d.ts",
     // 生成的题库数据（由 dataset/tools/sync-data.mjs 产出，不参与 lint）
     "data/**",

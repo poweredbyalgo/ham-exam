@@ -11,6 +11,12 @@ next-env.d.ts
 # 生产构建
 /build
 
+# 静态导出产物（npm run build -> dist/）
+/dist/
+
+# 由 scripts/prepare-downloads.mjs 从 dataset/pdf/ 复制而来，不入库
+/public/downloads/ham-exam-bank-*.pdf
+
 # 调试日志
 npm-debug.log*
 yarn-debug.log*

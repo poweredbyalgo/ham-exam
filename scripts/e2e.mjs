@@ -13,7 +13,7 @@
  *   6. 附图：含附图的题目渲染出 <img>
  *   7. 深色模式：切换后 <html> 带 dark class 且持久化
  *   8. 离线（PWA）：Service Worker 注册 + 断网后页面仍可打开
- *   9. 无 JS 降级：/browse 在禁用 JS 时仍输出题目
+ *   9. 无 JS 降级：/browse 在禁用 JS 时仍返回可用的静态外壳（题目需 hydration）
  */
 import { existsSync } from "node:fs";
 import puppeteer from "puppeteer-core";
@@ -454,15 +454,20 @@ try {
   const off2 = await offline("/browse?bank=A", 0);
   check("断网后可浏览题库", off2.ok, off2.detail);
 
-  // ---------------------------------------------------------- 9. 无 JS 降级
+  // ---------------------------------------------------------- 9. 无 JS 时的 /browse
+  // 纯静态导出（output: "export"）没有服务端，/browse 的 ?bank=/?scope=/?page=
+  // 只能在浏览器里读取，因此禁用 JS 时只剩预渲染外壳，不再有题目内容。
+  // 这里断言「外壳可访问且没有报错」，题目内容由上面的 hydration 用例覆盖。
   const noJsPage = await browser.newPage();
   await noJsPage.setJavaScriptEnabled(false);
-  await noJsPage.goto(`${BASE}/browse?bank=A`, { waitUntil: "domcontentloaded" });
+  const noJsResponse = await noJsPage.goto(`${BASE}/browse?bank=A`, {
+    waitUntil: "domcontentloaded",
+  });
   const noJsBody = await noJsPage.$eval("body", (el) => el.innerText);
   check(
-    "禁用 JS 时浏览页仍有题目内容",
-    noJsBody.includes("答案") && noJsBody.length > 2000,
-    `len=${noJsBody.length}`,
+    "禁用 JS 时浏览页仍返回可用的静态外壳",
+    noJsResponse.status() === 200 && (await noJsPage.title()).includes("题库浏览"),
+    `status=${noJsResponse.status()} len=${noJsBody.length}`,
   );
   await noJsPage.close();
 
@@ -489,8 +494,9 @@ try {
     links.some((l) => l.href === "/downloads/ham-exam-figures.zip"),
   );
 
-  // 实际点击一个 PDF 下载链接，确认返回的是真 PDF 且带附件头
-  const pdfHref = links.find((l) => l.href?.startsWith("/api/download/bank-pdf"));
+  // 实际拉取一个 PDF 下载链接，确认返回的是真 PDF
+  // （静态站点不会下发 Content-Disposition，落盘名由 <a download> 指定）
+  const pdfLink = links.find((l) => l.href?.startsWith("/downloads/ham-exam-bank-"));
   const pdfProbe = await page.evaluate(async (href) => {
     const r = await fetch(href);
     const b = await r.arrayBuffer();
@@ -499,18 +505,16 @@ try {
       status: r.status,
       head,
       bytes: b.byteLength,
-      disposition: r.headers.get("content-disposition") ?? "",
       type: r.headers.get("content-type") ?? "",
     };
-  }, pdfHref.href);
+  }, pdfLink.href);
   check(
     "原始 PDF 下载可用且文件有效",
     pdfProbe.status === 200 &&
       pdfProbe.head === "%PDF" &&
       pdfProbe.bytes > 100_000 &&
-      pdfProbe.disposition.includes("attachment") &&
-      pdfProbe.disposition.includes("filename*=UTF-8''"),
-    `${(pdfProbe.bytes / 1024).toFixed(0)}KB ${pdfProbe.disposition.slice(0, 46)}`,
+      pdfProbe.type === "application/pdf",
+    `${(pdfProbe.bytes / 1024).toFixed(0)}KB ${pdfProbe.type}`,
   );
 
   // 处理后 JSON 可直接解析
@@ -532,13 +536,13 @@ try {
     `total=${jsonProbe.total} 首题=${jsonProbe.first}`,
   );
 
-  // 非法 id 应被白名单拒绝（这次请求是刻意制造的 404，下面统计错误时排除）
-  const badIdUrl = `${BASE}/api/download/bank-pdf?id=../../package.json`;
+  // 静态导出后 PDF 是 public/downloads/ 下的普通文件，没有服务端白名单校验；
+  // 改为确认「未收录的 PDF 不存在」，即白名单之外确实没有可访问的题库原件。
   const badId = await page.evaluate(async () => {
-    const r = await fetch("/api/download/bank-pdf?id=../../package.json");
+    const r = await fetch("/downloads/ham-exam-bank-Z.pdf");
     return r.status;
   });
-  check("PDF 下载接口拒绝白名单外的 id", badId === 404, `status=${badId}`);
+  check("白名单外的题库 PDF 不存在", badId === 404, `status=${badId}`);
 
   // ---------------------------------------------------------- 11. 源数据提示已移除
   await page.goto(`${BASE}/practice?bank=A`, { waitUntil: "networkidle2" });
@@ -920,15 +924,17 @@ try {
   await setShuffle(false);
 
   // ---------------------------------------------------------- 15. 控制台错误与坏响应
-  // 上面刻意发起的非法 id 请求会产生一条 404，属预期行为，统计时排除
-  const intentional = [badIdUrl];
+  // 两类刻意制造的噪音，统计时排除：
+  //   1. 请求不存在的题库 PDF（验证白名单外确实没有原件）
+  //   2. 第 8 节断网测试期间的 ERR_INTERNET_DISCONNECTED
+  const intentional = ["/downloads/ham-exam-bank-Z.pdf"];
   const isIntentional = (s) => intentional.some((u) => s.includes(u));
 
   const realErrors = consoleErrors.filter(
     (e) =>
       !/favicon|Download the React DevTools|sw\.js/i.test(e) &&
-      !isIntentional(e) &&
-      !(/404/.test(e) && /bank-pdf/.test(e)),
+      !/ERR_INTERNET_DISCONNECTED/i.test(e) &&
+      !isIntentional(e),
   );
   check(
     "全程无未预期控制台错误",

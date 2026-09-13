@@ -15,6 +15,8 @@ interface DownloadItem {
   desc: string;
   bytes: number;
   url: string;
+  /** 仅原始 PDF 有：dataset/pdf/ 下的中文原名，用作落盘文件名 */
+  file?: string;
 }
 
 interface Checksum {
@@ -41,6 +43,12 @@ function formatSize(bytes: number): string {
 }
 
 function DownloadRow({ item, icon }: { item: DownloadItem; icon: string }) {
+  /**
+   * 静态导出后 PDF 是 public/downloads/ 下的普通文件，文件名已 ASCII 化
+   * （见 scripts/prepare-downloads.mjs）。这里用 download 属性把落盘名
+   * 换回中文原名，用户拿到的文件与 dataset/pdf/ 里的完全一致。
+   */
+  const saveAs = item.file ?? item.name;
   return (
     <li className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] py-3 last:border-0">
       <span aria-hidden className="text-lg leading-none">
@@ -57,7 +65,7 @@ function DownloadRow({ item, icon }: { item: DownloadItem; icon: string }) {
       </span>
       <a
         href={item.url}
-        download
+        download={saveAs}
         className="btn btn-sm btn-primary flex-none"
         aria-label={`下载 ${item.label}`}
       >

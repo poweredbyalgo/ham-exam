@@ -15,17 +15,22 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-生产构建与运行：
+生产构建与静态预览：
 
 ```bash
-npm run build
-npm run start        # 默认 http://localhost:3000
+npm run build          # 静态导出到 dist/
+npm run serve:dist     # 起本地静态服务器预览 dist/（默认 http://localhost:3000）
 ```
+
+> 本项目是 `output: "export"` 的纯静态站点，因此**没有 `npm run start`** ——
+> `next start` 只能服务 `.next` 的 Node 运行时，读不了静态导出产物。
 
 其他命令：
 
 | 命令 | 说明 |
 | --- | --- |
+| `npm run serve:dist` | 预览静态产物（`scripts/serve-dist.mjs`，零依赖） |
+| `npm run clean` | 删除 `dist/` 与 `.next/` |
 | `npm run sync-data` | 由 `dataset/` 重新生成 `data/*.json`（字段重塑，不改题目内容） |
 | `npm run dataset:build` | 从题库 PDF 重建 `dataset/*.json` 与 `public/figures/`（需 Python + pymupdf） |
 | `npm run dataset:verify` | 校验 `dataset/*.json` 与题库 PDF 逐字段一致 |
@@ -108,9 +113,8 @@ npm run start        # 默认 http://localhost:3000
 │  ├─ exam/                    组卷 → 答题 → 成绩（含 result/ 子路由）
 │  ├─ review/                  错题本 / 收藏夹 / 已掌握 + 逐题重做
 │  ├─ stats/                   掌握度统计 + 设置与数据管理
-│  ├─ browse/                  题库浏览（服务端渲染）
+│  ├─ browse/                  题库浏览（外壳服务端渲染，参数客户端读取）
 │  ├─ downloads/               数据下载页（服务端渲染）
-│  └─ api/download/bank-pdf/   原始题库 PDF 白名单下载接口
 ├─ components/                 复用组件
 │  ├─ question-card.tsx        题目卡（选项、附图、只看答案模式）
 │  ├─ sticky-actions.tsx       底部固定操作条 + 等高占位
@@ -168,11 +172,14 @@ dataset/figures.json ───────────────────�
 
 - **题目数据静态内联，不做运行时接口**：题库是只读的，构建时内联后全站数据同源、无请求瀑布、天然可离线。`questions.json` 原始约 1.46 MB，**gzip 后约 321 KB**。
 - **进度只在浏览器本地**：用原生 IndexedDB（未引入 `idb`、Dexie 等封装），约 100 行封装 `open/get/getAll/put/putMany/delete/clear`。
-- **服务端渲染不碰用户数据**：`useStore` 的服务端快照恒为「未加载」，避免 hydration 不一致；`/browse` 与首页数据卡片是纯服务端渲染，因此禁 JS 也有内容。
+- **服务端渲染不碰用户数据**：`useStore` 的服务端快照恒为「未加载」，避免 hydration 不一致；首页数据卡片是纯服务端渲染。
 - **无重型 UI 依赖**：全部样式基于 Tailwind v4 的 `@theme` 设计令牌 + 少量 `@layer components` 类（`.card` `.btn` `.option` `.chip` 等）。
 - **做题位置从 URL 推导**，不在 state 里重复保存，导航只需 `router.replace`，无需 effect 回写 state。
 - **附图只存一份**：`build_dataset.py` 直接写入 `public/figures/` 且文件名统一小写，同步脚本只做交叉核对、不再复制，避免两份副本漂移（小写也保证在 Linux 容器 / CDN 等区分大小写的环境上不会 404）。
-- **原始 PDF 不放进 `public/`**：改用 `/api/download/bank-pdf` 路由处理器按下发，只暴露 `lib/downloads.ts` 白名单里的 4 个文件，并能精确控制 `Content-Disposition`（中文文件名走 RFC 5987 的 `filename*`），避免把 `dataset/pdf/` 整个目录公开。
+- **原始 PDF 以静态文件提供**：`scripts/prepare-downloads.mjs` 在构建前把 `dataset/pdf/` 白名单里的 4 个文件复制成 `public/downloads/ham-exam-bank-*.pdf`。
+  - 纯静态导出没有服务端，`/api/*` 路由处理器不可用（存在即构建失败），`public/` 是唯一能被直接请求的位置。
+  - 复制用 ASCII 文件名，下载 URL 不依赖服务器的中文路径编码；落盘文件名由下载链接的 `download` 属性还原为中文原名（见 `app/downloads/page.tsx`）。
+  - 只暴露白名单内的 4 个文件，不会开放整个 `dataset/pdf/`；复制的副本被 `.gitignore` 排除，不会入库。
 - **附图 zip 手写生成**：不引第三方打包库，条目按文件名排序、时间戳固定为 1980-01-01，因此同一份输入必然产出逐字节相同的 zip（已验证两次生成 SHA-256 一致），便于缓存与校验。
 
 ### 数据下载
@@ -181,7 +188,7 @@ dataset/figures.json ───────────────────�
 
 | 入口 | 内容 |
 | --- | --- |
-| `/api/download/bank-pdf?id=A\|B\|C\|figures` | 题库原始 PDF（未做任何修改） |
+| `/downloads/ham-exam-bank-{A,B,C,figures}.pdf` | 题库原始 PDF（未做任何修改） |
 | `/downloads/ham-exam-questions-{A,B,C}.json` | 应用内部形态：camelCase、`options` 为 4 元数组，附 `fieldNotes` |
 | `/downloads/ham-exam-dataset-{A,B,C}.json` | 与 `dataset/*.json` 一致：snake_case、选项为对象，含 `validation_notes` |
 | `/downloads/ham-exam-figures.json` · `ham-exam-figures.zip` | 附图清单与 53 张图片 |
@@ -252,21 +259,31 @@ IndexedDB 数据库 `crac-practice`（v2）含 6 个 object store：
 
 ## 部署
 
-仓库根目录就是应用根目录，**无需配置 root directory / 子目录**，任何支持 Node 20.9+ 的平台均可：
+本项目是 `output: "export"` 的**纯静态站点**，构建产物在 `dist/`，不需要 Node 运行时：
 
 ```bash
-npm ci && npm run build && npm run start
+npm ci && npm run build
 ```
 
-- **Vercel**：直接导入仓库即可，Framework Preset 会自动识别为 Next.js，Root Directory 保持默认（仓库根）。
-- **Docker / 自建**：`npm ci && npm run build` 后 `npm run start`。
-- **静态托管**：本项目用了 Service Worker 与 `next.config.ts` 的 `headers()`，因此走 Node 运行时（`next start`）最稳妥；纯静态导出需自行处理 `/browse` 的 `searchParams` 与缓存头。
+`dist/` 整个目录可直接发布到任意静态服务器 / 对象存储 / CDN（Vercel、Netlify、GitHub Pages、Nginx、OSS+S3 均可）。所有路由都是预渲染静态页（构建输出全为 `○`），应用**没有服务端状态与数据库**。
 
-`dataset/`（题库 PDF 与 Python 管线）不参与前端构建，也不会被 Next 打包；如需缩小仓库体积可自行删除，应用只依赖 `data/` 与 `public/figures/`。若要在部署时跳过校验 Python 依赖，直接用默认的 `npm ci`（不安装任何 Python 包）。
+本地验证：`npm run serve:dist`（`scripts/serve-dist.mjs`，零依赖，按导出产物的路径规则处理目录索引与 RSC 负载）。
 
-静态化程度：`/`、`/practice`、`/exam`、`/exam/result`、`/review`、`/stats` 均为预渲染静态页（`○`），仅 `/browse` 因读取 `searchParams` 为按需渲染（`ƒ`）。应用**没有服务端状态与数据库**。
+### 静态化的取舍
 
-注意：`/figures/*` 与 `/sw.js` 的缓存头已在 `next.config.ts` 中配置（附图 immutable 长缓存，`sw.js` 不缓存）。
+原先依赖服务端的两处，导出后必须让步：
+
+1. **`/browse` 的查询参数**：`?bank=` / `?scope=` / `?page=` 改由客户端读取（`app/browse/browse-client.tsx`），页面只预渲染一份外壳 —— 构建期无法得知这些取值。代价是禁用 JavaScript 时该页不再有题目内容，因此该页的带参筛选改由 `scripts/e2e.mjs` 覆盖，不再由 smoke 断言。
+2. **原始 PDF**：由 `/api/download/bank-pdf` 路由处理器改为 `public/downloads/` 下的静态文件。纯静态托管不会下发 `Content-Disposition`，落盘文件名改由下载链接的 `download` 属性指定。
+
+### 缓存头
+
+`next.config.ts` 里的 `headers()` 在静态导出下**不生效**（`next build` 会提示 `export-no-custom-routes`），仅在 `next dev` 或自建 Node 托管时有效。静态托管请自行配置等价规则：
+
+- `/figures/*`：`Cache-Control: public, max-age=31536000, immutable`
+- `/sw.js`：`Cache-Control: public, max-age=0, must-revalidate`（且需允许根作用域）
+
+`dataset/`（题库 PDF 与 Python 管线）不参与前端构建，也不会被 Next 打包；但**原始 PDF 依赖它** —— 缺失时 `prepare-downloads` 会跳过复制并提示，下载页的 PDF 入口会 404，其余功能不受影响。
 
 ---
 

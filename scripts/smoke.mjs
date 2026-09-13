@@ -4,9 +4,16 @@
  *
  *   node scripts/smoke.mjs [baseUrl]
  *
+ * 对两种目标都适用：
+ *   - 开发服务器：      npm run dev            然后 node scripts/smoke.mjs http://localhost:3000
+ *   - 静态导出产物：    npm run build && npm run serve:dist   然后 node scripts/smoke.mjs http://localhost:3000
+ *
  * 说明：只断言「服务端渲染」就能确定的内容。练习/考试/统计等页面是客户端组件，
  * 首屏 HTML 里只有骨架屏，真实内容需要 hydration 后才出现 —— 那部分由
  * scripts/e2e.mjs（真实浏览器）覆盖。
+ *
+ * 注意：/browse 自静态导出改造后由客户端读取查询参数，其带参筛选内容
+ * 同样只能由 e2e 覆盖，不在本脚本断言范围内。
  *
  * 覆盖点：
  *   1. 各路由 HTTP 200
@@ -33,25 +40,28 @@ const checks = [
       ">C</span>",
     ],
   },
+  // ---- /browse 只断言外壳 ----
+  // 静态导出后该页由客户端读取 ?bank= / ?scope= / ?page=，
+  // 首屏 HTML 只有标题与骨架屏，带参筛选内容见 scripts/e2e.mjs。
   {
     path: "/browse?bank=A",
-    name: "题库浏览（A 类）",
-    expect: ["题库浏览", "683 题", "答案 ", "第 1/28 页"],
+    name: "题库浏览（外壳）",
+    expect: ["题库浏览"],
   },
   {
     path: "/browse?bank=C&scope=4.1.3",
-    name: "题库浏览（知识点筛选）",
-    expect: ["4.1.3", "电流的单位是", "答案 A"],
+    name: "题库浏览（知识点筛选外壳）",
+    expect: ["题库浏览"],
   },
   {
     path: "/browse?bank=C&scope=4.4.1",
-    name: "题库浏览（含附图知识点）",
-    expect: ["/figures/lk05", "下列电路"],
+    name: "题库浏览（含附图知识点外壳）",
+    expect: ["题库浏览"],
   },
   {
     path: "/browse?bank=B&page=3",
-    name: "题库浏览（分页）",
-    expect: ["第 3/", "答案 "],
+    name: "题库浏览（分页外壳）",
+    expect: ["题库浏览"],
   },
   { path: "/figures/lk0597.jpg", name: "附图文件", expect: [], binary: true },
   { path: "/manifest.webmanifest", name: "PWA manifest", expect: ["ham-exam", "standalone"] },
@@ -81,8 +91,11 @@ const checks = [
     expect: ['"figure_id"', '"file"'],
   },
   { path: "/downloads/ham-exam-figures.zip", name: "附图图片包 (ZIP)", expect: [], binary: true, zip: true },
-  { path: "/api/download/bank-pdf?id=A", name: "原始 PDF 下载 (A)", expect: [], binary: true, pdf: true },
-  { path: "/api/download/bank-pdf?id=figures", name: "原始 PDF (附图标记)", expect: [], binary: true, pdf: true },
+  // 原始 PDF 是静态导出后的普通文件（由 scripts/prepare-downloads.mjs 复制进 public/）。
+  // 纯静态托管不会下发 Content-Disposition: attachment —— 浏览器落盘名改由
+  // 下载页 <a download="中文原名"> 指定，因此这里只校验 PDF 魔数。
+  { path: "/downloads/ham-exam-bank-A.pdf", name: "原始 PDF 下载 (A)", expect: [], binary: true, pdf: true },
+  { path: "/downloads/ham-exam-bank-figures.pdf", name: "原始 PDF (附图标记)", expect: [], binary: true, pdf: true },
   { path: "/robots.txt", name: "robots.txt", expect: [], allow404: true },
 ];
 
@@ -133,11 +146,6 @@ for (const c of checks) {
       if (c.pdf) {
         if (head.toString("latin1") !== "%PDF") {
           bad(`${c.name.padEnd(26)} 不是 PDF（头部 ${JSON.stringify(head.toString("latin1"))}）`);
-          continue;
-        }
-        const disp = res.headers.get("content-disposition") ?? "";
-        if (!disp.includes("attachment") || !disp.includes("filename*=UTF-8''")) {
-          bad(`${c.name.padEnd(26)} Content-Disposition 异常: ${disp || "(缺失)"}`);
           continue;
         }
       }
