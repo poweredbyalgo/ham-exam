@@ -1,0 +1,36 @@
+{
+  "name": "crac-practice",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CRAC 业余无线电操作技术能力验证 智能练习系统",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "sync-data": "node dataset/tools/sync-data.mjs",
+    "make-icons": "node scripts/make-icons.mjs",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
+    "check": "npm run typecheck && npm run lint && npm run build",
+    "dataset:build": "python dataset/tools/build_dataset.py",
+    "dataset:verify": "python dataset/tools/verify_bank.py && python dataset/tools/verify_dataset.py"
+  },
+  "dependencies": {
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.3.5",
+    "puppeteer-core": "^25.10.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  }
+}

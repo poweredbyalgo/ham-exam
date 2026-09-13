@@ -1,0 +1,17 @@
+# 统一换行符，避免 Windows 提交时 CRLF/LF 反复冲突
+* text=auto eol=lf
+
+# 二进制资源（不要做换行或文本处理）
+*.pdf   binary
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+
+# 生成产物 / 第三方代码不计入语言统计
+data/**            linguist-generated=true
+public/figures/**  linguist-generated=true
+dataset/*.json     linguist-generated=true
+package-lock.json  linguist-generated=true -diff
