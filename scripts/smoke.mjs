@@ -58,6 +58,30 @@ const checks = [
   { path: "/icon.svg", name: "应用图标 (svg)", expect: ["<svg"] },
   { path: "/icon-192.png", name: "应用图标 192", expect: [], binary: true },
   { path: "/icon-512.png", name: "应用图标 512", expect: [], binary: true },
+  // ---- 数据下载入口 ----
+  {
+    path: "/downloads",
+    name: "数据下载页",
+    expect: ["数据下载", "题库原始 PDF", "crac-figures.zip", "SHA-256", "crac-questions-A.json"],
+  },
+  {
+    path: "/downloads/crac-questions-A.json",
+    name: "处理后数据 (A)",
+    expect: ['"questionId"', '"stem"', '"answer"', '"knowledgePoint"', '"options"'],
+  },
+  {
+    path: "/downloads/crac-dataset-A.json",
+    name: "原始字段形态 (A)",
+    expect: ['"question_id"', '"bank_id"', '"validation_notes"'],
+  },
+  {
+    path: "/downloads/crac-figures.json",
+    name: "附图清单 (JSON)",
+    expect: ['"figure_id"', '"file"'],
+  },
+  { path: "/downloads/crac-figures.zip", name: "附图图片包 (ZIP)", expect: [], binary: true, zip: true },
+  { path: "/api/download/bank-pdf?id=A", name: "原始 PDF 下载 (A)", expect: [], binary: true, pdf: true },
+  { path: "/api/download/bank-pdf?id=figures", name: "原始 PDF (附图标记)", expect: [], binary: true, pdf: true },
   { path: "/robots.txt", name: "robots.txt", expect: [], allow404: true },
 ];
 
@@ -100,7 +124,34 @@ for (const c of checks) {
       bad(`${c.name.padEnd(26)} ${res.status} ${c.path}`);
       continue;
     }
-    const raw = c.binary ? "" : await res.text();
+
+    // 二进制资源：校验文件头魔数，避免「200 但是错误页」这种假通过
+    if (c.binary) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      const head = buf.subarray(0, 4);
+      if (c.pdf) {
+        if (head.toString("latin1") !== "%PDF") {
+          bad(`${c.name.padEnd(26)} 不是 PDF（头部 ${JSON.stringify(head.toString("latin1"))}）`);
+          continue;
+        }
+        const disp = res.headers.get("content-disposition") ?? "";
+        if (!disp.includes("attachment") || !disp.includes("filename*=UTF-8''")) {
+          bad(`${c.name.padEnd(26)} Content-Disposition 异常: ${disp || "(缺失)"}`);
+          continue;
+        }
+      }
+      if (c.zip) {
+        // 本地文件头 PK\x03\x04
+        if (!(head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04)) {
+          bad(`${c.name.padEnd(26)} 不是 ZIP（头部 ${head.toString("hex")}）`);
+          continue;
+        }
+      }
+      ok(`${c.name.padEnd(26)} ${res.status}  ${(buf.length / 1024).toFixed(0)}KB`);
+      continue;
+    }
+
+    const raw = await res.text();
     const body = normalize(raw);
     const missing = c.expect.filter((needle) => !body.includes(needle));
     if (missing.length > 0) {
@@ -109,10 +160,7 @@ for (const c of checks) {
       );
       continue;
     }
-    const size = c.binary
-      ? `${res.headers.get("content-length") ?? "?"}B`
-      : `${body.length}B`;
-    ok(`${c.name.padEnd(26)} ${res.status}  ${size}`);
+    ok(`${c.name.padEnd(26)} ${res.status}  ${body.length}B`);
   } catch (err) {
     bad(`${c.name.padEnd(26)} 请求失败: ${err.message}`);
   }

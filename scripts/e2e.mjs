@@ -57,7 +57,12 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 const consoleErrors = [];
 page.on("console", (msg) => {
-  if (msg.type() === "error") consoleErrors.push(msg.text());
+  if (msg.type() !== "error") return;
+  // 浏览器对资源加载失败只给一句通用文案，URL 在 location() 里
+  const loc = msg.location();
+  consoleErrors.push(
+    loc?.url ? `${msg.text()} [${loc.url}]` : msg.text(),
+  );
 });
 page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
 const badResponses = [];
@@ -461,9 +466,111 @@ try {
   );
   await noJsPage.close();
 
-  // ---------------------------------------------------------- 10. 控制台错误与坏响应
+  // ---------------------------------------------------------- 10. 数据下载
+  await page.goto(`${BASE}/downloads`, { waitUntil: "networkidle2" });
+  const dlBody = await bodyText();
+  check("数据下载页渲染原始 PDF 入口", dlBody.includes("题库原始 PDF"));
+  check("数据下载页列出附图图片包", dlBody.includes("附图图片包"));
+  check("数据下载页给出 SHA-256 校验值", dlBody.includes("SHA-256"));
+
+  const links = await page.evaluate(() =>
+    [...document.querySelectorAll("a[download]")].map((a) => ({
+      href: a.getAttribute("href"),
+      text: a.textContent?.trim(),
+    })),
+  );
+  check(
+    "下载链接数量完整（4 个 PDF + 8 个数据文件）",
+    links.length === 12,
+    `实际 ${links.length} 个`,
+  );
+  check(
+    "附图包下载链接指向 zip",
+    links.some((l) => l.href === "/downloads/crac-figures.zip"),
+  );
+
+  // 实际点击一个 PDF 下载链接，确认返回的是真 PDF 且带附件头
+  const pdfHref = links.find((l) => l.href?.startsWith("/api/download/bank-pdf"));
+  const pdfProbe = await page.evaluate(async (href) => {
+    const r = await fetch(href);
+    const b = await r.arrayBuffer();
+    const head = new TextDecoder("latin1").decode(new Uint8Array(b.slice(0, 4)));
+    return {
+      status: r.status,
+      head,
+      bytes: b.byteLength,
+      disposition: r.headers.get("content-disposition") ?? "",
+      type: r.headers.get("content-type") ?? "",
+    };
+  }, pdfHref.href);
+  check(
+    "原始 PDF 下载可用且文件有效",
+    pdfProbe.status === 200 &&
+      pdfProbe.head === "%PDF" &&
+      pdfProbe.bytes > 100_000 &&
+      pdfProbe.disposition.includes("attachment") &&
+      pdfProbe.disposition.includes("filename*=UTF-8''"),
+    `${(pdfProbe.bytes / 1024).toFixed(0)}KB ${pdfProbe.disposition.slice(0, 46)}`,
+  );
+
+  // 处理后 JSON 可直接解析
+  const jsonProbe = await page.evaluate(async () => {
+    const r = await fetch("/downloads/crac-questions-A.json");
+    const j = await r.json();
+    return {
+      status: r.status,
+      total: j.total,
+      first: j.questions?.[0]?.questionId,
+      hasOptionsArray: Array.isArray(j.questions?.[0]?.options),
+    };
+  });
+  check(
+    "处理后 JSON 可解析且结构正确",
+    jsonProbe.status === 200 &&
+      jsonProbe.total === 683 &&
+      jsonProbe.hasOptionsArray === true,
+    `total=${jsonProbe.total} 首题=${jsonProbe.first}`,
+  );
+
+  // 非法 id 应被白名单拒绝（这次请求是刻意制造的 404，下面统计错误时排除）
+  const badIdUrl = `${BASE}/api/download/bank-pdf?id=../../package.json`;
+  const badId = await page.evaluate(async () => {
+    const r = await fetch("/api/download/bank-pdf?id=../../package.json");
+    return r.status;
+  });
+  check("PDF 下载接口拒绝白名单外的 id", badId === 404, `status=${badId}`);
+
+  // ---------------------------------------------------------- 11. 源数据提示已移除
+  await page.goto(`${BASE}/practice?bank=A`, { waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  // 第 14 题是 MC1-0014（源数据前缀与答案个数不一致的那道）
+  await page.goto(`${BASE}/practice?bank=A&i=13`, { waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  await page.keyboard.press("KeyA");
+  await sleep(100);
+  await page.keyboard.press("Enter");
+  await sleep(500);
+  const mismatchBody = await bodyText();
+  check(
+    "题目卡不再显示源数据提示",
+    !mismatchBody.includes("源数据提示") &&
+      !mismatchBody.includes("type_code_vs_answer_count_mismatch"),
+  );
+  check(
+    "该题仍按多选正常判分（可选多个选项）",
+    mismatchBody.includes("多选题") && mismatchBody.includes("知识点 1.1.2"),
+  );
+
+  // ---------------------------------------------------------- 12. 控制台错误与坏响应
+  // 上面刻意发起的非法 id 请求会产生一条 404，属预期行为，统计时排除
+  const intentional = [badIdUrl];
+  const isIntentional = (s) => intentional.some((u) => s.includes(u));
+
   const realErrors = consoleErrors.filter(
-    (e) => !/favicon|Download the React DevTools|sw\.js/i.test(e),
+    (e) =>
+      !/favicon|Download the React DevTools|sw\.js/i.test(e) &&
+      !isIntentional(e) &&
+      !(/404/.test(e) && /bank-pdf/.test(e)),
   );
   check(
     "全程无未预期控制台错误",
@@ -471,9 +578,11 @@ try {
     realErrors.slice(0, 2).join(" | "),
   );
 
-  const realBad = badResponses.filter((r) => !/favicon/i.test(r));
+  const realBad = badResponses.filter(
+    (r) => !/favicon/i.test(r) && !isIntentional(r),
+  );
   check(
-    "全程无 4xx/5xx 资源响应",
+    "全程无 4xx/5xx 资源响应（不含刻意测试的非法请求）",
     realBad.length === 0,
     realBad.slice(0, 3).join(" | "),
   );

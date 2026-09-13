@@ -83,18 +83,22 @@ npm run start        # 默认 http://localhost:3000
 │  ├─ exam/                    组卷 → 答题 → 成绩（含 result/ 子路由）
 │  ├─ review/                  错题本 / 收藏夹 / 已掌握 + 逐题重做
 │  ├─ stats/                   掌握度统计 + 设置与数据管理
-│  └─ browse/                  题库浏览（服务端渲染）
+│  ├─ browse/                  题库浏览（服务端渲染）
+│  ├─ downloads/               数据下载页（服务端渲染）
+│  └─ api/download/bank-pdf/   原始题库 PDF 白名单下载接口
 ├─ components/                 复用组件（题目卡、复盘列表、选择器…）
 ├─ lib/
 │  ├─ types.ts                 全部数据类型
 │  ├─ question-bank.ts         题库访问层（唯一数据入口）
+│  ├─ downloads.ts             PDF 白名单（与 sync-data.mjs 保持一致）
 │  ├─ idb.ts                   IndexedDB 极简 Promise 封装
 │  ├─ store.ts                 可订阅状态层（作答、统计、设置…）
 │  ├─ use-store.ts             useSyncExternalStore 绑定
 │  └─ theme.ts / theme-script.ts  主题三态与防闪白脚本
-├─ data/                       由 sync-data 生成（questions/figures/index）
+├─ data/                       由 sync-data 生成（questions/figures/index/downloads）
 ├─ public/
 │  ├─ figures/                 53 张附图（由 build_dataset.py 直接写入，小写文件名）
+│  ├─ downloads/               可下载的处理后数据与附图 zip（由 sync-data 生成）
 │  ├─ sw.js                    Service Worker
 │  └─ manifest.webmanifest     PWA 清单
 ├─ scripts/
@@ -109,7 +113,7 @@ npm run start        # 默认 http://localhost:3000
 │     ├─ build_dataset.py      PDF -> dataset/*.json + public/figures/
 │     ├─ verify_bank.py        PDF <-> JSON 逐字段校验
 │     ├─ verify_dataset.py     数据形态自检
-│     └─ sync-data.mjs         dataset/*.json -> data/*.json
+│     └─ sync-data.mjs         dataset/*.json -> data/*.json + public/downloads/
 └─ docs/WEB.md                 本文件
 ```
 
@@ -120,9 +124,9 @@ dataset/pdf/*.pdf ─► dataset/tools/build_dataset.py ─► dataset/{A,B,C}.j
                                                     ─► dataset/figures.json
                                                     ─► public/figures/*.jpg
                                                                │
-dataset/{A,B,C}.json ─► dataset/tools/sync-data.mjs ─► data/questions.json
-dataset/figures.json ────────────────────────────────► data/figures.json
-                                                       data/index.json
+dataset/{A,B,C}.json ─► dataset/tools/sync-data.mjs ─► data/{questions,figures,index}.json
+dataset/figures.json ────────────────────────────────► public/downloads/*（下载用）
+                                                       data/downloads.json（下载清单）
                                                               │
                                         lib/question-bank.ts ◄┘（静态 import，构建期内联）
                                                               │
@@ -139,6 +143,21 @@ dataset/figures.json ───────────────────�
 - **无重型 UI 依赖**：全部样式基于 Tailwind v4 的 `@theme` 设计令牌 + 少量 `@layer components` 类（`.card` `.btn` `.option` `.chip` 等）。
 - **做题位置从 URL 推导**，不在 state 里重复保存，导航只需 `router.replace`，无需 effect 回写 state。
 - **附图只存一份**：`build_dataset.py` 直接写入 `public/figures/` 且文件名统一小写，同步脚本只做交叉核对、不再复制，避免两份副本漂移（小写也保证在 Linux 容器 / CDN 等区分大小写的环境上不会 404）。
+- **原始 PDF 不放进 `public/`**：改用 `/api/download/bank-pdf` 路由处理器按下发，只暴露 `lib/downloads.ts` 白名单里的 4 个文件，并能精确控制 `Content-Disposition`（中文文件名走 RFC 5987 的 `filename*`），避免把 `dataset/pdf/` 整个目录公开。
+- **附图 zip 手写生成**：不引第三方打包库，条目按文件名排序、时间戳固定为 1980-01-01，因此同一份输入必然产出逐字节相同的 zip（已验证两次生成 SHA-256 一致），便于缓存与校验。
+
+### 数据下载
+
+`/downloads` 由服务端渲染，读 `data/downloads.json` 清单（含每个文件的字节数与 SHA-256）：
+
+| 入口 | 内容 |
+| --- | --- |
+| `/api/download/bank-pdf?id=A\|B\|C\|figures` | 题库原始 PDF（未做任何修改） |
+| `/downloads/crac-questions-{A,B,C}.json` | 应用内部形态：camelCase、`options` 为 4 元数组，附 `fieldNotes` |
+| `/downloads/crac-dataset-{A,B,C}.json` | 与 `dataset/*.json` 一致：snake_case、选项为对象，含 `validation_notes` |
+| `/downloads/crac-figures.json` · `crac-figures.zip` | 附图清单与 53 张图片 |
+
+`dataset/tools/verify_dataset.py` 会校验「`lib/downloads.ts` 与 `sync-data.mjs` 的白名单一致」「下载产物与清单一致」「校验值覆盖全部产物」，防止两处清单漂移或产物缺失。
 
 ### 状态与持久化
 
@@ -174,7 +193,7 @@ IndexedDB 数据库 `crac-practice`（v2）含 6 个 object store：
 
 - `A/B/C` 之间存在 1143 个共用题号，因此进度按「题库 + 序号」记录。
 - 源题库中有 596 处总题库编号为占位值 `LX`（A 类 167 / B 类 217 / C 类 212），这是源 PDF 的原貌，已原样保留，未做猜测性填充。
-- `MC1-0014`、`MC1-0016` 在源文件中题型前缀为 MC1（单选）但答案有 2 项。应用以**答案个数**判定题型，并在题目卡上提示该源数据差异（共 6 条记录带 `issues`，涉及这 2 个题号）。
+- `MC1-0014`、`MC1-0016` 在源文件中题型前缀为 MC1（单选）但答案有 2 项。应用以**答案个数**判定题型（界面上按多选呈现），并把这 6 条记录标记在 `issues` 字段中以便溯源；界面上不做提示。
 - 题目卡的 `issues` 字段会展示源数据自检标记；若某题编号为空则显示「编号缺失」（当前数据集中没有这种情况，属防御性分支）。
 
 数据版本由题目内容的 SHA-256 前 12 位生成（当前 `a052a0c01311`），显示在首页与设置面板，便于确认前端数据与 `dataset/` 是否同源。
@@ -185,15 +204,15 @@ IndexedDB 数据库 `crac-practice`（v2）含 6 个 object store：
 
 两层测试，均已通过：
 
-**`npm run test:smoke`（18 项）** —— HTTP 层，断言服务端渲染内容：
-各路由 200、首页统计数字、浏览页题目/分页/知识点筛选/附图路径、PWA 资源（manifest / sw.js / 三种图标）、以及题库数据确实进入了客户端 bundle。
+**`npm run test:smoke`（25 项）** —— HTTP 层，断言服务端渲染内容：
+各路由 200、首页统计数字、浏览页题目/分页/知识点筛选/附图路径、PWA 资源（manifest / sw.js / 三种图标）、**下载入口（下载页、两种 JSON 形态、附图 zip 的文件头魔数、原始 PDF 的 `%PDF` 魔数与 `Content-Disposition`）**、以及题库数据确实进入了客户端 bundle。
 
 > 练习/考试/统计页是客户端组件，首屏 HTML 只有骨架屏，因此冒烟测试对它们只校验「外壳」（200 + 合法 HTML），真实内容由 e2e 覆盖。
 
-**`npm run test:e2e`（35 项）** —— 用本机 Edge（`puppeteer-core`）真实运行：
-题目与选项渲染、键盘快捷键（A–D / Enter / ←→ / S）、判分与错题判定、IndexedDB 落盘（attempts / stats）、附图 `naturalWidth > 0`、错题本收录与展开、「逐题重做」链接与页面、切换题库不串进度、统计页渲染、考试组卷→答题→交卷→成绩页、结果页失分知识点、深色模式切换与刷新保持、Service Worker 注册、**断网后练习页与浏览页仍可用**、**禁用 JS 后浏览页仍有内容**、全程无控制台错误与 4xx/5xx。
+**`npm run test:e2e`（45 项）** —— 用本机 Edge（`puppeteer-core`）真实运行：
+题目与选项渲染、键盘快捷键（A–D / Enter / ←→ / S）、判分与错题判定、IndexedDB 落盘（attempts / stats）、附图 `naturalWidth > 0`、错题本收录与展开、「逐题重做」链接与页面、切换题库不串进度、统计页渲染、考试组卷→答题→交卷→成绩页、结果页失分知识点、深色模式切换与刷新保持、Service Worker 注册、**断网后练习页与浏览页仍可用**、**禁用 JS 后浏览页仍有内容**、**下载页链接完整性、PDF 实际下载可解析、处理后 JSON 结构正确、非法 id 被白名单拦截**、**题目卡不再显示源数据提示**、全程无控制台错误与 4xx/5xx。
 
-当前结果：`18/18` 与 `35/35` 全部通过，`npm run check`（typecheck + lint + build）无错误无警告。
+当前结果：`25/25` 与 `45/45` 全部通过，`npm run check`（typecheck + lint + build）无错误无警告。
 
 ---
 

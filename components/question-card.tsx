@@ -293,13 +293,6 @@ export function QuestionCard({
         </p>
       )}
 
-      {question.issues.length > 0 && submitted && (
-        <p className="mt-3 rounded-lg bg-[var(--warn-soft)] px-3 py-2 text-xs text-[var(--warn)]">
-          源数据提示：{question.issues.join("、")}
-          （题型前缀与实际答案个数不一致，已按答案个数判定）
-        </p>
-      )}
-
       {keyboard && (
         <p className="mt-4 hidden items-center gap-2 text-xs text-[var(--text-subtle)] sm:flex">
           <span className="kbd">A</span>–<span className="kbd">D</span> 选择

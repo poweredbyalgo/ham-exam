@@ -77,5 +77,42 @@ for cat in ("A", "B", "C"):
             if (len(q["answer"]) == 1) != (q["type"] == "single_choice")]
     P(f"{cat}.json type/answer consistency: {'OK' if not bad2 else bad2}")
 
+# 6) 题库 PDF 白名单必须与前端 lib/downloads.ts 一致
+#    （两处各有一份：Node 管线用 JS，路由处理器用 TS，需要防漂移）
+import re as _re
+_ts = os.path.join(ROOT, "lib", "downloads.ts")
+_js = os.path.join(OUT, "tools", "sync-data.mjs")
+if os.path.exists(_ts) and os.path.exists(_js):
+    def _entries(path):
+        src = open(path, encoding="utf-8").read()
+        return sorted(_re.findall(r'file:\s*"([^"]+\.pdf)"', src))
+    ts_files, js_files = _entries(_ts), _entries(_js)
+    same = ts_files == js_files
+    P("PDF 白名单 lib/downloads.ts 与 sync-data.mjs 一致:", "yes" if same else "NO")
+    if not same:
+        P("  lib/downloads.ts:", ts_files)
+        P("  sync-data.mjs   :", js_files)
+    # 白名单里的文件必须真实存在
+    missing_pdf = [f for f in ts_files if not os.path.exists(os.path.join(OUT, "pdf", f))]
+    P("PDF 白名单文件均存在:", "yes" if not missing_pdf else f"NO {missing_pdf}")
+
+# 7) 下载清单 data/downloads.json 与实际产物一致
+_dl_manifest = os.path.join(ROOT, "data", "downloads.json")
+_dl_dir = os.path.join(ROOT, "public", "downloads")
+if os.path.exists(_dl_manifest):
+    _m = json.load(open(_dl_manifest, encoding="utf-8"))
+    _listed = sorted(f["name"] for f in _m["processedFiles"])
+    _actual = sorted(os.listdir(_dl_dir)) if os.path.isdir(_dl_dir) else []
+    P("下载产物 public/downloads/ 与清单一致:",
+      "yes" if _listed == _actual else f"NO 清单={_listed} 实际={_actual}")
+    _hashed = set(c["name"] for c in _m["checksums"])
+    _pdf_names = set(f["file"] for f in _m["pdfFiles"]) if "pdfFiles" in _m else set()
+    P("下载校验值覆盖全部产物:",
+      "yes" if set(_listed) <= _hashed and _pdf_names <= _hashed else "NO")
+    _pdf_missing = [n for n in _pdf_names if not os.path.exists(os.path.join(OUT, "pdf", n))]
+    P("下载清单中的 PDF 均存在:", "yes" if not _pdf_missing else f"NO {_pdf_missing}")
+else:
+    P("下载清单 data/downloads.json: 尚未生成（运行 npm run sync-data）")
+
 open(os.path.join(OUT, "_verify_dataset.txt"), "w", encoding="utf-8").write("\n".join(rep))
 print("\n".join(rep))

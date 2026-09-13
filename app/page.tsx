@@ -44,7 +44,7 @@ export default function HomePage() {
 
       <section>
         <h2 className="mb-3 px-1 text-sm font-semibold text-[var(--text-muted)]">
-          练习模式
+          功能入口
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <ModeCard
@@ -83,11 +83,22 @@ export default function HomePage() {
             desc="按章节浏览全部题目与答案，支持跳转题号与附图查看。"
             icon="🔍"
           />
+          <ModeCard
+            href="/downloads"
+            title="数据下载"
+            desc="下载题库原始 PDF、处理后的题目 JSON 与附图图片包，附 SHA-256 校验值。"
+            icon="⬇️"
+          />
         </div>
       </section>
 
       <section className="card p-4">
-        <h2 className="text-sm font-semibold">关于题库数据</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-semibold">关于题库数据</h2>
+          <Link href="/downloads" className="btn btn-sm btn-ghost ml-auto">
+            下载数据
+          </Link>
+        </div>
         <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
           <Row label="数据来源" value={dataIndex.generatedFrom} mono />
           <Row label="数据版本" value={dataIndex.dataVersion} mono />
@@ -98,6 +109,11 @@ export default function HomePage() {
           {dataIndex.note}
           题库中 {t.sharedAcrossBanks} 个题号同时出现在多套题库中（三套题库本身存在大量重叠），
           因此练习进度按「题库 + 题号」分别记录，各库计数互不干扰。
+          原始 PDF 与处理后的 JSON、附图图片包可在
+          <Link href="/downloads" className="mx-1 text-[var(--accent-text)] underline">
+            数据下载
+          </Link>
+          页获取。
         </p>
       </section>
     </div>

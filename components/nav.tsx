@@ -8,6 +8,8 @@ import { ThemeToggle } from "./theme-toggle";
 /**
  * 顶部导航（桌面）与底部标签栏（移动端）。
  * 五个主入口保持一致，避免移动端出现「找不到功能」的问题。
+ * 题库浏览（/browse）与数据下载（/downloads）是次要入口：
+ * 桌面放在顶栏右侧，移动端放在首页的功能卡片里。
  */
 const NAV_ITEMS = [
   { href: "/", label: "首页", icon: HomeIcon },
@@ -15,6 +17,11 @@ const NAV_ITEMS = [
   { href: "/exam", label: "考试", icon: ExamIcon },
   { href: "/review", label: "错题", icon: ReviewIcon },
   { href: "/stats", label: "统计", icon: StatsIcon },
+] as const;
+
+const SECONDARY_ITEMS = [
+  { href: "/browse", label: "题库浏览" },
+  { href: "/downloads", label: "数据下载" },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {
@@ -49,7 +56,24 @@ export function Nav() {
               );
             })}
           </nav>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5">
+            {SECONDARY_ITEMS.map((item) => {
+              const active = isActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`hidden rounded-lg px-2.5 py-1.5 text-sm transition-colors sm:block ${
+                    active
+                      ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
+                      : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
             <ThemeToggle />
           </div>
         </div>

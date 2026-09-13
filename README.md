@@ -41,6 +41,7 @@ npm run start
 | **收藏夹** | 标记重点题并单独练习 |
 | **统计面板** | 总正确率、已作答去重数、连续练习天数、7 天作答图、章节掌握度、知识点明细（可只看薄弱项） |
 | **题库浏览** | 服务端渲染的完整题库列表，禁用 JavaScript 也能使用 |
+| **数据下载** | 下载题库原始 PDF、处理后的题目 JSON（两种字段形态）与附图图片包，附 SHA-256 校验值 |
 | **附图** | 电路图 / 天线图内联渲染，点击放大 |
 | **键盘操作** | `A`–`D` 选择、`Enter` 提交/下一题、`←` `→` 翻题、`S` 收藏、`Esc` 关闭图片 |
 | **深色模式** | 跟随系统 / 浅色 / 深色三态，无闪白，偏好持久化 |
@@ -56,11 +57,14 @@ npm run start
 ```text
 .
 ├─ app/                 Next.js App Router（页面与客户端组件）
+│  ├─ api/download/     原始题库 PDF 白名单下载接口
+│  └─ downloads/        数据下载页
 ├─ components/          复用 UI 组件
 ├─ lib/                 题库访问层、状态层、IndexedDB 封装、类型
 ├─ data/                【生成】应用直接引用的静态数据
 ├─ public/
 │  ├─ figures/          【生成】53 张附图
+│  ├─ downloads/        【生成】可下载的处理后数据与图片包
 │  ├─ sw.js             Service Worker
 │  └─ manifest.webmanifest
 ├─ scripts/             测试与图标生成脚本
@@ -72,7 +76,7 @@ npm run start
 │     ├─ build_dataset.py    PDF → dataset/*.json + public/figures/
 │     ├─ verify_bank.py      PDF ↔ JSON 逐字段一致性校验
 │     ├─ verify_dataset.py   数据形态自检
-│     └─ sync-data.mjs       dataset/*.json → data/*.json
+│     └─ sync-data.mjs       dataset/*.json → data/*.json + public/downloads/
 └─ docs/WEB.md          应用架构与实现细节
 ```
 
@@ -121,11 +125,24 @@ dataset/pdf/*.pdf ─► build_dataset.py ─► dataset/{A,B,C}.json ─► syn
 
 数据由 `dataset/tools/build_dataset.py` 从题库 PDF 生成，`dataset/tools/verify_bank.py` 逐字段校验（校验结论：三套题库与源 PDF **完全对应，无多余内容**）。
 
+### 下载入口
+
+应用内 `/downloads` 页提供全部数据的下载，也可直接访问：
+
+| 内容 | 入口 |
+| --- | --- |
+| 题库原始 PDF（4 个，未做任何修改） | `/api/download/bank-pdf?id=A` · `?id=B` · `?id=C` · `?id=figures` |
+| 处理后题目 JSON（camelCase，选项为数组） | `/downloads/crac-questions-{A,B,C}.json` |
+| 处理后题目 JSON（与 `dataset/` 校验数据一致） | `/downloads/crac-dataset-{A,B,C}.json` |
+| 附图清单 / 附图图片包 | `/downloads/crac-figures.json` · `/downloads/crac-figures.zip` |
+
+下载页同时列出每个文件的 SHA-256，可用于校验完整性。PDF 接口只暴露白名单内的 4 个文件（见 `lib/downloads.ts`），不会开放整个 `dataset/` 目录。
+
 **已知的源数据特征**（已妥善处理，非缺陷）：
 
 - 三套题库间有 1143 个共用题号（源题库本身大量重叠），因此进度按「题库 + 序号」而非题号记录。
 - 596 处总题库编号为占位值 `LX`（A 167 / B 217 / C 212），为源 PDF 原貌，未做猜测性填充。
-- `MC1-0014`、`MC1-0016` 题型前缀为 MC1（单选）但答案有 2 项；应用以**答案个数**判定题型并在界面上提示。
+- `MC1-0014`、`MC1-0016` 题型前缀为 MC1（单选）但答案有 2 项；应用以**答案个数**判定题型（界面上按多选呈现，不额外提示）。
 - 多选需**选全**所有正确选项才算答对（与源题库规则一致）。
 
 数据版本由题目内容的 SHA-256 前 12 位生成（当前 `a052a0c01311`），显示在首页与设置面板，用于确认前端数据与 `dataset/` 同源。
