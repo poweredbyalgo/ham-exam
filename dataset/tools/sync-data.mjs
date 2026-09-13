@@ -6,9 +6,9 @@
  *   dataset/{A,B,C}.json  -> data/questions.json  (按库分组，应用引用)
  *   dataset/figures.json  -> data/figures.json    (附图清单)
  *   dataset/{A,B,C}.json  -> data/index.json      (统计与章节树)
- *   dataset/{A,B,C}.json  -> public/downloads/crac-dataset-{A,B,C}.json (下载用)
- *   dataset/figures.json  -> public/downloads/crac-figures.json
- *   public/figures/*.jpg  -> public/downloads/crac-figures.zip
+ *   dataset/{A,B,C}.json  -> public/downloads/ham-exam-dataset-{A,B,C}.json (下载用)
+ *   dataset/figures.json  -> public/downloads/ham-exam-figures.json
+ *   public/figures/*.jpg  -> public/downloads/ham-exam-figures.zip
  *   dataset/pdf/*.pdf     -> public/downloads/crac-bank-{A,B,C}.pdf 与 附图标记 PDF
  *                         （由 /api/download/bank-pdf 按白名单读取并下发）
  *
@@ -316,21 +316,21 @@ async function main() {
   }
 
   const zipBuf = await buildFiguresZip();
-  await writeFile(path.join(DL_DIR, "crac-figures.zip"), zipBuf);
+  await writeFile(path.join(DL_DIR, "ham-exam-figures.zip"), zipBuf);
 
   // ---------- 下载用文件 ----------
   // 两种形态都提供：
-  //   crac-dataset-{bank}.json  与 dataset/*.json 完全一致（snake_case，选项为对象，
+  //   ham-exam-dataset-{bank}.json  与 dataset/*.json 完全一致（snake_case，选项为对象，
   //                             含 validation_notes / field_notes 等溯源信息）
-  //   crac-questions-{bank}.json 应用内部使用的形态（camelCase，options 为数组），
+  //   ham-exam-questions-{bank}.json 应用内部使用的形态（camelCase，options 为数组），
   //                             便于直接喂给程序做练习/判分
   for (const bank of BANKS) {
     await copyFile(
       path.join(SRC, `${bank}.json`),
-      path.join(DL_DIR, `crac-dataset-${bank}.json`),
+      path.join(DL_DIR, `ham-exam-dataset-${bank}.json`),
     );
     await writeFile(
-      path.join(DL_DIR, `crac-questions-${bank}.json`),
+      path.join(DL_DIR, `ham-exam-questions-${bank}.json`),
       JSON.stringify(
         {
           bank,
@@ -348,7 +348,7 @@ async function main() {
             stem: "题干",
             options: "长度为 4 的数组，下标 0..3 依次对应选项 A..D",
             answer: "正确答案字母，如 \"A\"、\"AB\"、\"ABCD\"",
-            figure: "附图文件名（小写，与 crac-figures.zip 内文件名一致）；无附图为 null",
+            figure: "附图文件名（小写，与 ham-exam-figures.zip 内文件名一致）；无附图为 null",
             issues: "源数据自检标记，正常为空数组",
           },
           questions: questions[bank],
@@ -361,14 +361,14 @@ async function main() {
   }
   await copyFile(
     path.join(SRC, "figures.json"),
-    path.join(DL_DIR, "crac-figures.json"),
+    path.join(DL_DIR, "ham-exam-figures.json"),
   );
 
   const sizeOf = async (p) => (await readFile(p)).length;
 
   const processedFiles = [];
   for (const bank of BANKS) {
-    const name = `crac-questions-${bank}.json`;
+    const name = `ham-exam-questions-${bank}.json`;
     processedFiles.push({
       name,
       label: `${bank} 类题库（处理后 JSON）`,
@@ -377,7 +377,7 @@ async function main() {
     });
   }
   for (const bank of BANKS) {
-    const name = `crac-dataset-${bank}.json`;
+    const name = `ham-exam-dataset-${bank}.json`;
     processedFiles.push({
       name,
       label: `${bank} 类题库（原始字段形态）`,
@@ -387,13 +387,13 @@ async function main() {
   }
   processedFiles.push(
     {
-      name: "crac-figures.json",
+      name: "ham-exam-figures.json",
       label: "附图清单（JSON）",
       desc: `附图编号、文件名、所在页码、尺寸；共 ${figures.length} 条`,
-      bytes: await sizeOf(path.join(DL_DIR, "crac-figures.json")),
+      bytes: await sizeOf(path.join(DL_DIR, "ham-exam-figures.json")),
     },
     {
-      name: "crac-figures.zip",
+      name: "ham-exam-figures.zip",
       label: "附图图片包（ZIP）",
       desc: `${files.length} 张 JPG，文件名与题目 figure 字段一致`,
       bytes: zipBuf.length,

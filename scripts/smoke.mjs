@@ -22,7 +22,8 @@ const checks = [
     path: "/",
     name: "首页",
     expect: [
-      "CRAC 业余无线电智能练习",
+      "ham-exam",
+      "业余无线电",
       "3108",
       "1375", // 唯一题号
       "53", // 附图数
@@ -53,7 +54,7 @@ const checks = [
     expect: ["第 3/", "答案 "],
   },
   { path: "/figures/lk0597.jpg", name: "附图文件", expect: [], binary: true },
-  { path: "/manifest.webmanifest", name: "PWA manifest", expect: ["CRAC", "standalone"] },
+  { path: "/manifest.webmanifest", name: "PWA manifest", expect: ["ham-exam", "standalone"] },
   { path: "/sw.js", name: "Service Worker", expect: ["crac-shell", "crac-assets"] },
   { path: "/icon.svg", name: "应用图标 (svg)", expect: ["<svg"] },
   { path: "/icon-192.png", name: "应用图标 192", expect: [], binary: true },
@@ -62,24 +63,24 @@ const checks = [
   {
     path: "/downloads",
     name: "数据下载页",
-    expect: ["数据下载", "题库原始 PDF", "crac-figures.zip", "SHA-256", "crac-questions-A.json"],
+    expect: ["数据下载", "题库原始 PDF", "ham-exam-figures.zip", "SHA-256", "ham-exam-questions-A.json"],
   },
   {
-    path: "/downloads/crac-questions-A.json",
+    path: "/downloads/ham-exam-questions-A.json",
     name: "处理后数据 (A)",
     expect: ['"questionId"', '"stem"', '"answer"', '"knowledgePoint"', '"options"'],
   },
   {
-    path: "/downloads/crac-dataset-A.json",
+    path: "/downloads/ham-exam-dataset-A.json",
     name: "原始字段形态 (A)",
     expect: ['"question_id"', '"bank_id"', '"validation_notes"'],
   },
   {
-    path: "/downloads/crac-figures.json",
+    path: "/downloads/ham-exam-figures.json",
     name: "附图清单 (JSON)",
     expect: ['"figure_id"', '"file"'],
   },
-  { path: "/downloads/crac-figures.zip", name: "附图图片包 (ZIP)", expect: [], binary: true, zip: true },
+  { path: "/downloads/ham-exam-figures.zip", name: "附图图片包 (ZIP)", expect: [], binary: true, zip: true },
   { path: "/api/download/bank-pdf?id=A", name: "原始 PDF 下载 (A)", expect: [], binary: true, pdf: true },
   { path: "/api/download/bank-pdf?id=figures", name: "原始 PDF (附图标记)", expect: [], binary: true, pdf: true },
   { path: "/robots.txt", name: "robots.txt", expect: [], allow404: true },

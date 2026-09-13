@@ -486,7 +486,7 @@ try {
   );
   check(
     "附图包下载链接指向 zip",
-    links.some((l) => l.href === "/downloads/crac-figures.zip"),
+    links.some((l) => l.href === "/downloads/ham-exam-figures.zip"),
   );
 
   // 实际点击一个 PDF 下载链接，确认返回的是真 PDF 且带附件头
@@ -515,7 +515,7 @@ try {
 
   // 处理后 JSON 可直接解析
   const jsonProbe = await page.evaluate(async () => {
-    const r = await fetch("/downloads/crac-questions-A.json");
+    const r = await fetch("/downloads/ham-exam-questions-A.json");
     const j = await r.json();
     return {
       status: r.status,
@@ -678,11 +678,8 @@ try {
   await page.waitForSelector(".option", { timeout: 10000 });
   const sourceOptions = await readOptions();
 
-  // 打开乱序设置
-  await page.evaluate(() => {
-    // 通过统计页的设置面板切换
-    location.href = "/stats?bank=A";
-  });
+  // 打开乱序设置（用 page.goto 而非 location.href，避免 Next lint 警告）
+  await page.goto(`${BASE}/stats?bank=A`, { waitUntil: "networkidle2" });
   await page.waitForFunction(() => document.body.innerText.includes("选项乱序"), {
     timeout: 8000,
   });
@@ -734,7 +731,7 @@ try {
   await page.waitForSelector(".option", { timeout: 10000 });
   const displayOpts14 = await readOptions();
   const sourceQ14 = await page.evaluate(async () => {
-    const r = await fetch("/downloads/crac-questions-A.json");
+    const r = await fetch("/downloads/ham-exam-questions-A.json");
     const j = await r.json();
     const q = j.questions.find((x) => x.questionId === "MC1-0014");
     return { options: q.options, answer: q.answer };

@@ -213,7 +213,8 @@ def build_category(cat):
         "field_notes": FIELD_NOTES,
         "questions": questions,
     }
-    json.dump(data, open(os.path.join(OUT, f"{cat}.json"), "w", encoding="utf-8"),
+    json.dump(data, open(os.path.join(OUT, f"{cat}.json"), "w", encoding="utf-8",
+                         newline="\n"),
               ensure_ascii=False, indent=2)
     summary.append((cat, data))
     all_reports.append((cat, len(questions), data["type_counts"], len(notes), embedded,
@@ -286,7 +287,8 @@ def build_figures():
                 })
     doc.close()
     manifest.sort(key=lambda m: m["figure_id"])
-    json.dump(manifest, open(os.path.join(OUT, "figures.json"), "w", encoding="utf-8"),
+    json.dump(manifest, open(os.path.join(OUT, "figures.json"), "w", encoding="utf-8",
+                             newline="\n"),
               ensure_ascii=False, indent=2)
 
     # 总览页（文件名 ASCII 小写，相对路径引用 ../public/figures/）
@@ -332,7 +334,7 @@ __CARDS__
     html = (html.replace("__N__", str(len(manifest)))
                 .replace("__RANGE__", f'{manifest[0]["figure_id"]} - {manifest[-1]["figure_id"]}')
                 .replace("__CARDS__", "\n".join(cards)))
-    open(os.path.join(OUT, "figures.html"), "w", encoding="utf-8").write(html)
+    open(os.path.join(OUT, "figures.html"), "w", encoding="utf-8", newline="\n").write(html)
     return manifest, warns
 
 
@@ -355,7 +357,7 @@ def main():
                    f"footer_page_numbers_stripped={fpn}")
     rep.append(f"figures: {len(manifest)} files, ids {manifest[0]['figure_id']}..{manifest[-1]['figure_id']}, "
                f"unique={len(set(m['figure_id'] for m in manifest))}, warnings={warns or 'none'}")
-    open(os.path.join(OUT, "_report.txt"), "w", encoding="utf-8").write("\n".join(rep))
+    open(os.path.join(OUT, "_report.txt"), "w", encoding="utf-8", newline="\n").write("\n".join(rep))
     print("\n".join(rep))
 
 

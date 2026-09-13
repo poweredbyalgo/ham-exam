@@ -1,7 +1,7 @@
 {
-  "name": "CRAC 业余无线电智能练习",
-  "short_name": "CRAC 练习",
-  "description": "A/B/C 类操作技术能力验证智能练习系统：顺序练习、模拟考试、错题本与知识点掌握度统计，离线可用。",
+  "name": "ham-exam · 业余无线电操作技术能力验证练习",
+  "short_name": "ham-exam",
+  "description": "中国业余无线电操作技术能力验证智能练习系统：A/B/C 三套题库、顺序练习、模拟考试、错题本与知识点掌握度统计，离线可用。",
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",

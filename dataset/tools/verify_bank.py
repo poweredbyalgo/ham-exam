@@ -193,5 +193,5 @@ else:
     P("结论: dataset/*.json 与题库 PDF 完全对应, 未发现不属于题库的多余内容。")
 P("=" * 74)
 
-open(os.path.join(OUT, "_verify.txt"), "w", encoding="utf-8").write("\n".join(lines))
+open(os.path.join(OUT, "_verify.txt"), "w", encoding="utf-8", newline="\n").write("\n".join(lines))
 sys.exit(1 if problems else 0)

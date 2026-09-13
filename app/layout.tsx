@@ -7,16 +7,16 @@ import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 
 export const metadata: Metadata = {
   title: {
-    default: "CRAC 智能练习系统",
-    template: "%s · CRAC 智能练习",
+    default: "ham-exam · 业余无线电操作技术能力验证练习",
+    template: "%s · ham-exam",
   },
   description:
-    "业余无线电操作技术能力验证智能练习系统：A/B/C 三套题库、顺序练习、模拟考试、错题本与知识点掌握度统计，全程离线可用。",
-  applicationName: "CRAC 智能练习",
+    "中国业余无线电操作技术能力验证智能练习系统：A/B/C 三套题库、顺序练习、模拟考试、错题本与知识点掌握度统计，全程离线可用。",
+  applicationName: "ham-exam",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "CRAC 练习",
+    title: "ham-exam",
     statusBarStyle: "default",
   },
   icons: {
@@ -54,7 +54,7 @@ export default function RootLayout({
           {children}
         </main>
         <footer className="hidden sm:block border-t border-[var(--border)] py-4 text-center text-xs text-[var(--text-subtle)]">
-          CRAC 智能练习 · 题库数据来自 A/B/C 类题库 PDF 与总题库附图标记 PDF
+          ham-exam · 业余无线电操作技术能力验证练习系统
         </footer>
         <ServiceWorkerRegistrar />
       </body>

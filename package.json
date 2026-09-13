@@ -1,8 +1,8 @@
 {
-  "name": "crac-practice",
+  "name": "ham-exam",
   "version": "0.1.0",
   "private": true,
-  "description": "CRAC 业余无线电操作技术能力验证 智能练习系统",
+  "description": "中国业余无线电操作技术能力验证智能练习系统",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

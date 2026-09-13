@@ -1,4 +1,4 @@
-# CRAC 业余无线电智能练习系统
+# ham-exam · 业余无线电操作技术能力验证智能练习系统
 
 面向中国业余无线电**操作技术能力验证**（A / B / C 类）的刷题系统，附带一套从题库 PDF 到应用数据的完整、可复现管线。
 
@@ -134,9 +134,9 @@ dataset/pdf/*.pdf ─► build_dataset.py ─► dataset/{A,B,C}.json ─► syn
 | 内容 | 入口 |
 | --- | --- |
 | 题库原始 PDF（4 个，未做任何修改） | `/api/download/bank-pdf?id=A` · `?id=B` · `?id=C` · `?id=figures` |
-| 处理后题目 JSON（camelCase，选项为数组） | `/downloads/crac-questions-{A,B,C}.json` |
-| 处理后题目 JSON（与 `dataset/` 校验数据一致） | `/downloads/crac-dataset-{A,B,C}.json` |
-| 附图清单 / 附图图片包 | `/downloads/crac-figures.json` · `/downloads/crac-figures.zip` |
+| 处理后题目 JSON（camelCase，选项为数组） | `/downloads/ham-exam-questions-{A,B,C}.json` |
+| 处理后题目 JSON（与 `dataset/` 校验数据一致） | `/downloads/ham-exam-dataset-{A,B,C}.json` |
+| 附图清单 / 附图图片包 | `/downloads/ham-exam-figures.json` · `/downloads/ham-exam-figures.zip` |
 
 下载页同时列出每个文件的 SHA-256，可用于校验完整性。PDF 接口只暴露白名单内的 4 个文件（见 `lib/downloads.ts`），不会开放整个 `dataset/` 目录。
 

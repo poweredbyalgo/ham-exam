@@ -11,11 +11,11 @@ export function Brand({ compact = false }: { compact?: boolean }) {
         aria-hidden
         className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--accent)] text-sm font-bold text-white"
       >
-        CR
+        HX
       </span>
       {!compact && (
         <span className="font-semibold tracking-tight whitespace-nowrap">
-          CRAC 智能练习
+          ham-exam
         </span>
       )}
     </Link>

@@ -114,5 +114,5 @@ if os.path.exists(_dl_manifest):
 else:
     P("下载清单 data/downloads.json: 尚未生成（运行 npm run sync-data）")
 
-open(os.path.join(OUT, "_verify_dataset.txt"), "w", encoding="utf-8").write("\n".join(rep))
+open(os.path.join(OUT, "_verify_dataset.txt"), "w", encoding="utf-8", newline="\n").write("\n".join(rep))
 print("\n".join(rep))

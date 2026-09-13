@@ -5,7 +5,7 @@ import { dataIndex } from "@/lib/question-bank";
 export const metadata = {
   title: "数据下载",
   description:
-    "下载 CRAC 题库原始 PDF、处理后的题目 JSON 数据与附图图片包，含 SHA-256 校验值。",
+    "下载题库原始 PDF、处理后的题目 JSON 数据与附图图片包，含 SHA-256 校验值。",
 };
 
 interface DownloadItem {
@@ -117,14 +117,14 @@ export default function DownloadsPage() {
         <h2 className="text-sm font-semibold">数据格式说明</h2>
         <p className="mt-1 text-xs leading-relaxed text-[var(--text-subtle)]">
           每个题库提供两种形态，内容相同、只是字段组织方式不同：
-          <code className="mx-1 font-mono">crac-questions-*.json</code>
+          <code className="mx-1 font-mono">ham-exam-questions-*.json</code>
           字段为 camelCase、选项为数组，拿来即可判分；
-          <code className="mx-1 font-mono">crac-dataset-*.json</code>
+          <code className="mx-1 font-mono">ham-exam-dataset-*.json</code>
           与仓库中经校验的原始数据完全一致（snake_case、选项为对象），便于与 PDF 对照。
         </p>
 
         <h3 className="mt-4 text-xs font-medium text-[var(--text-muted)]">
-          crac-questions-*.json（推荐使用）
+          ham-exam-questions-*.json（推荐使用）
         </h3>
         <pre className="mt-2 overflow-x-auto rounded-lg bg-[var(--surface-2)] p-3 text-xs leading-relaxed">
 {`{
@@ -150,7 +150,7 @@ export default function DownloadsPage() {
         </pre>
 
         <h3 className="mt-4 text-xs font-medium text-[var(--text-muted)]">
-          crac-dataset-*.json（与仓库校验数据一致）
+          ham-exam-dataset-*.json（与仓库校验数据一致）
         </h3>
         <pre className="mt-2 overflow-x-auto rounded-lg bg-[var(--surface-2)] p-3 text-xs leading-relaxed">
 {`{
@@ -239,7 +239,7 @@ export default function DownloadsPage() {
           <p className="mt-3 text-xs leading-relaxed text-[var(--text-subtle)]">
             校验示例（PowerShell）：
             <code className="ml-1 font-mono">
-              Get-FileHash crac-dataset-A.json -Algorithm SHA256
+              Get-FileHash ham-exam-dataset-A.json -Algorithm SHA256
             </code>
           </p>
         </details>

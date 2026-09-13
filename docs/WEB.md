@@ -1,4 +1,4 @@
-# CRAC 智能练习系统
+# ham-exam 应用架构
 
 面向中国业余无线电**操作技术能力验证**（A / B / C 类）的刷题系统，基于 **Next.js 16（App Router）+ React 19 + TypeScript + Tailwind CSS v4**。
 
@@ -182,9 +182,9 @@ dataset/figures.json ───────────────────�
 | 入口 | 内容 |
 | --- | --- |
 | `/api/download/bank-pdf?id=A\|B\|C\|figures` | 题库原始 PDF（未做任何修改） |
-| `/downloads/crac-questions-{A,B,C}.json` | 应用内部形态：camelCase、`options` 为 4 元数组，附 `fieldNotes` |
-| `/downloads/crac-dataset-{A,B,C}.json` | 与 `dataset/*.json` 一致：snake_case、选项为对象，含 `validation_notes` |
-| `/downloads/crac-figures.json` · `crac-figures.zip` | 附图清单与 53 张图片 |
+| `/downloads/ham-exam-questions-{A,B,C}.json` | 应用内部形态：camelCase、`options` 为 4 元数组，附 `fieldNotes` |
+| `/downloads/ham-exam-dataset-{A,B,C}.json` | 与 `dataset/*.json` 一致：snake_case、选项为对象，含 `validation_notes` |
+| `/downloads/ham-exam-figures.json` · `ham-exam-figures.zip` | 附图清单与 53 张图片 |
 
 `dataset/tools/verify_dataset.py` 会校验「`lib/downloads.ts` 与 `sync-data.mjs` 的白名单一致」「下载产物与清单一致」「校验值覆盖全部产物」，防止两处清单漂移或产物缺失。
 

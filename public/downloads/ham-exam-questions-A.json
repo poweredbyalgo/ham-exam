@@ -14,7 +14,7 @@
   "stem": "题干",
   "options": "长度为 4 的数组，下标 0..3 依次对应选项 A..D",
   "answer": "正确答案字母，如 \"A\"、\"AB\"、\"ABCD\"",
-  "figure": "附图文件名（小写，与 crac-figures.zip 内文件名一致）；无附图为 null",
+  "figure": "附图文件名（小写，与 ham-exam-figures.zip 内文件名一致）；无附图为 null",
   "issues": "源数据自检标记，正常为空数组"
  },
  "questions": [

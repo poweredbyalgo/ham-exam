@@ -11,7 +11,7 @@ export default function HomePage() {
       <section className="card overflow-hidden">
         <div className="border-b border-[var(--border)] bg-gradient-to-br from-[var(--accent-soft)] to-transparent p-5 sm:p-6">
           <h1 className="text-2xl font-semibold tracking-tight">
-            CRAC 业余无线电智能练习
+            业余无线电操作技术能力验证练习
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--text-muted)]">
             面向 A / B / C 类操作技术能力验证的刷题系统。共{" "}

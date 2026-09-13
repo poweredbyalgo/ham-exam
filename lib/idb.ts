@@ -7,6 +7,12 @@
  * 注意：所有函数在服务端（无 indexedDB）都应安全失败，由调用方保证只在客户端调用。
  */
 
+/**
+ * 数据库名沿用项目早期的 `crac-practice`，**不要因为项目改名而修改**：
+ * 改名会让所有已有用户的练习进度（错题本、断点、成绩历史）全部失效，
+ * 而这个名字不会出现在任何用户可见的界面或 URL 上。
+ * localStorage 的 `crac-practice:theme` 键同理（见 lib/theme-script.ts）。
+ */
 export const DB_NAME = "crac-practice";
 export const DB_VERSION = 2;
 
