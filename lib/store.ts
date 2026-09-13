@@ -39,6 +39,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoNext: true,
   showFigure: true,
   autoRemoveStreak: 2,
+  shuffleOptions: false,
+  recallAnswerOnly: false,
 };
 
 interface State {

@@ -561,7 +561,368 @@ try {
     mismatchBody.includes("多选题") && mismatchBody.includes("知识点 1.1.2"),
   );
 
-  // ---------------------------------------------------------- 12. 控制台错误与坏响应
+  // ---------------------------------------------------------- 12. 底部固定操作条
+  // 针对手机视口：题干/附图变长时，操作按钮必须仍在视口内可点。
+  // 显式指定 ?i=0，避免沿用上一次练习保存的断点（末题会让「下一题」变为禁用）
+  await page.setViewport({ width: 390, height: 720 });
+  await page.goto(`${BASE}/practice?bank=C&scope=4.4.1&i=0`, {
+    waitUntil: "networkidle2",
+  });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  await sleep(500);
+
+  const barInfo = await page.evaluate(() => {
+    const group = document.querySelector('[role="group"][aria-label="答题操作"]');
+    if (!group) return { found: false };
+    const r = group.getBoundingClientRect();
+    const btns = [...group.querySelectorAll("button")].map((b) => ({
+      text: b.textContent?.trim(),
+      rect: b.getBoundingClientRect(),
+    }));
+    return {
+      found: true,
+      rect: { top: r.top, bottom: r.bottom, height: r.height },
+      vh: window.innerHeight,
+      btns: btns.map((b) => ({ text: b.text, top: b.rect.top, bottom: b.rect.bottom })),
+      // 移动端底部导航（fixed）的顶部位置
+      navTop: (() => {
+        const nav = document.querySelector('nav[aria-label="移动端导航"]');
+        return nav ? nav.getBoundingClientRect().top : null;
+      })(),
+      scrollable: document.documentElement.scrollHeight > window.innerHeight,
+    };
+  });
+
+  check("存在底部固定操作条", barInfo.found === true);
+  check(
+    "操作条完整落在视口内（无需滚动即可点击）",
+    barInfo.found &&
+      barInfo.rect.top > 0 &&
+      barInfo.rect.bottom <= barInfo.vh + 0.5,
+    `top=${barInfo.rect?.top?.toFixed(0)} bottom=${barInfo.rect?.bottom?.toFixed(0)} vh=${barInfo.vh}`,
+  );
+  check(
+    "操作条位于移动端底部导航之上，未被遮挡",
+    barInfo.navTop !== null && barInfo.rect.bottom <= barInfo.navTop + 0.5,
+    `barBottom=${barInfo.rect?.bottom?.toFixed(0)} navTop=${barInfo.navTop?.toFixed(0)}`,
+  );
+  check(
+    "上一题/下一题按钮都在操作条内且可见",
+    barInfo.btns.some((b) => b.text?.includes("上一题")) &&
+      barInfo.btns.some((b) => b.text?.includes("下一题")) &&
+      barInfo.btns.every((b) => b.bottom <= barInfo.vh + 0.5),
+  );
+
+  // 直接把页面滚到底，操作条仍应停在原位（fixed 而非随内容浮动）
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await sleep(400);
+  const afterScroll = await page.evaluate(() => {
+    const group = document.querySelector('[role="group"][aria-label="答题操作"]');
+    const r = group.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, vh: window.innerHeight };
+  });
+  check(
+    "滚到页面底部后操作条位置不变",
+    Math.abs(afterScroll.bottom - barInfo.rect.bottom) < 2,
+    `bottom ${barInfo.rect.bottom.toFixed(0)} -> ${afterScroll.bottom.toFixed(0)}`,
+  );
+
+  // 真机式点击：不滚动，直接点「下一题」。
+  // 注意本节多道题题干完全相同（"图中的电路为：…"），因此断言进度计数而非题干。
+  const readPos = () =>
+    page.evaluate(() => {
+      const m = document.body.innerText.match(/(\d+)\s*\/\s*(\d+)/);
+      return m ? `${m[1]}/${m[2]}` : null;
+    });
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await sleep(300);
+  const posBefore = await readPos();
+  const clicked = await page.evaluate(() => {
+    const group = document.querySelector('[role="group"][aria-label="答题操作"]');
+    const btn = [...group.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("下一题"),
+    );
+    if (!btn) return "missing";
+    if (btn.disabled) return "disabled";
+    btn.click();
+    return "clicked";
+  });
+  await page
+    .waitForFunction(
+      (prev) => {
+        const m = document.body.innerText.match(/(\d+)\s*\/\s*(\d+)/);
+        return m && `${m[1]}/${m[2]}` !== prev;
+      },
+      { timeout: 8000 },
+      posBefore,
+    )
+    .catch(() => undefined);
+  const posAfter = await readPos();
+  check(
+    "未滚动即可点击「下一题」并成功翻题",
+    clicked === "clicked" && posAfter !== posBefore,
+    `${clicked}；进度 ${posBefore} → ${posAfter}`,
+  );
+
+  await page.setViewport({ width: 1280, height: 900 });
+
+  // ---------------------------------------------------------- 13. 选项乱序
+  const readOptions = async () =>
+    page.$$eval(".option", (els) =>
+      els.map((e) => e.textContent?.replace(/^[A-D]/, "").trim() ?? ""),
+    );
+
+  // 关闭乱序时，顺序应与题库源数据一致
+  await page.goto(`${BASE}/practice?bank=A&i=0`, { waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  const sourceOptions = await readOptions();
+
+  // 打开乱序设置
+  await page.evaluate(() => {
+    // 通过统计页的设置面板切换
+    location.href = "/stats?bank=A";
+  });
+  await page.waitForFunction(() => document.body.innerText.includes("选项乱序"), {
+    timeout: 8000,
+  });
+  const toggled = await page.evaluate(() => {
+    const label = [...document.querySelectorAll("label")].find((l) =>
+      l.textContent?.includes("选项乱序"),
+    );
+    const box = label?.querySelector('input[type="checkbox"]');
+    if (!box) return null;
+    box.click();
+    return box.checked;
+  });
+  await sleep(600);
+  check("设置面板可开启「选项乱序」", toggled === true);
+
+  await page.goto(`${BASE}/practice?bank=A&i=0`, { waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  const shuffledOptions = await readOptions();
+  check(
+    "开启后同一题选项顺序发生变化",
+    JSON.stringify(shuffledOptions) !== JSON.stringify(sourceOptions),
+    `原序 ${sourceOptions.map((o) => o.slice(0, 6)).join("|")}`,
+  );
+  check(
+    "乱序后仍是同样这 4 个选项（未丢未重）",
+    JSON.stringify([...shuffledOptions].sort()) ===
+      JSON.stringify([...sourceOptions].sort()),
+  );
+
+  // 顺序必须稳定：重新加载后一致
+  await page.reload({ waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  const shuffledAgain = await readOptions();
+  check(
+    "同一题乱序结果稳定（刷新后顺序不变）",
+    JSON.stringify(shuffledAgain) === JSON.stringify(shuffledOptions),
+  );
+
+  // 判分仍正确：按显示空间选出正确答案
+  const correctDisplayLetters = await page.evaluate(() => {
+    // 从页面上的“正确答案”标记无法在未提交时读到，改由数据推算：
+    // 选项文本与 dataset 对照，找出正确选项在显示顺序中的位置
+    return null;
+  });
+  void correctDisplayLetters;
+
+  // 用第 14 题（答案 AB 的多选题）验证「乱序后判分依然正确」
+  await page.goto(`${BASE}/practice?bank=A&i=13`, { waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  const displayOpts14 = await readOptions();
+  const sourceQ14 = await page.evaluate(async () => {
+    const r = await fetch("/downloads/crac-questions-A.json");
+    const j = await r.json();
+    const q = j.questions.find((x) => x.questionId === "MC1-0014");
+    return { options: q.options, answer: q.answer };
+  });
+  // 该题正确答案是 AB（原始空间），找出对应文本在显示顺序中的字母
+  const expectedDisplay = sourceQ14.answer
+    .split("")
+    .map((l) => sourceQ14.options[l.charCodeAt(0) - 65])
+    .map((text) => {
+      const i = displayOpts14.indexOf(text);
+      return i >= 0 ? String.fromCharCode(65 + i) : "?";
+    })
+    .sort();
+
+  for (const letter of expectedDisplay) {
+    await page.keyboard.press(`Key${letter}`);
+    await sleep(80);
+  }
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => !!document.querySelector(".chip-success"), {
+    timeout: 5000,
+  }).catch(() => undefined);
+  const gradedCorrect = await page.evaluate(
+    () => !!document.querySelector(".chip-success"),
+  );
+  check(
+    "乱序后按正确答案作答仍判为正确",
+    gradedCorrect === true,
+    `显示空间答案 ${expectedDisplay.join("")}`,
+  );
+
+  // ---------------------------------------------------------- 14. 背题模式「只看答案」
+  await page.goto(`${BASE}/practice?bank=A&mode=memorize`, {
+    waitUntil: "networkidle2",
+  });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  check("背题模式默认展示全部选项", (await page.$$(".option")).length === 4);
+
+  const switchToAnswerOnly = async () => {
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "只看答案",
+      );
+      btn?.click();
+    });
+    await sleep(500);
+  };
+  await switchToAnswerOnly();
+
+  const answerOnlyState = await page.evaluate(() => {
+    const text = document.body.innerText;
+    return {
+      optionCount: document.querySelectorAll(".option").length,
+      hasAnswerBox: /正确答案/.test(text),
+      pressed: [...document.querySelectorAll('button[aria-pressed="true"]')].some(
+        (b) => b.textContent?.trim() === "只看答案",
+      ),
+    };
+  });
+  check(
+    "切换后只显示正确答案、不显示全部选项",
+    answerOnlyState.optionCount === 0 && answerOnlyState.hasAnswerBox,
+    `选项数=${answerOnlyState.optionCount}`,
+  );
+  check("切换按钮处于选中态", answerOnlyState.pressed === true);
+
+  // 刷新后应记住选择
+  await page.reload({ waitUntil: "networkidle2" });
+  await page.waitForFunction(
+    () => !document.body.innerText.includes("载入"),
+    { timeout: 8000 },
+  );
+  await sleep(600);
+  const afterReloadRecall = await page.evaluate(() => ({
+    optionCount: document.querySelectorAll(".option").length,
+    hasAnswerBox: /正确答案/.test(document.body.innerText),
+    pressed: [...document.querySelectorAll('button[aria-pressed="true"]')].some(
+      (b) => b.textContent?.trim() === "只看答案",
+    ),
+  }));
+  check(
+    "刷新后默认沿用上次的背题模式选择",
+    afterReloadRecall.optionCount === 0 &&
+      afterReloadRecall.hasAnswerBox &&
+      afterReloadRecall.pressed === true,
+  );
+
+  // 切回「全部选项」并确认被记住
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "全部选项",
+    );
+    btn?.click();
+  });
+  await sleep(500);
+  await page.reload({ waitUntil: "networkidle2" });
+  await page.waitForSelector(".option", { timeout: 10000 });
+  check(
+    "切回「全部选项」后同样被记住",
+    (await page.$$(".option")).length === 4,
+  );
+
+  // ---------------------------------------------------------- 14b. 乱序开关切换不丢失已作答
+  // 这是「原始空间存盘」设计的核心保证：考试中途切换乱序，
+  // 已选的选项必须仍然指向同一段选项文本。
+  await page.setViewport({ width: 1280, height: 900 });
+  const setShuffle = async (on) => {
+    await page.goto(`${BASE}/stats?bank=A`, { waitUntil: "networkidle2" });
+    await page.waitForFunction(
+      () => document.body.innerText.includes("选项乱序"),
+      { timeout: 8000 },
+    );
+    await page.evaluate((want) => {
+      const label = [...document.querySelectorAll("label")].find((l) =>
+        l.textContent?.includes("选项乱序"),
+      );
+      const box = label?.querySelector('input[type="checkbox"]');
+      if (box && box.checked !== want) box.click();
+    }, on);
+    await sleep(500);
+  };
+
+  await setShuffle(false);
+  await page.goto(`${BASE}/exam`, { waitUntil: "networkidle2" });
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("button")].some((b) =>
+        b.textContent?.includes("开始考试"),
+      ),
+    { timeout: 8000 },
+  );
+  await page.evaluate(() => {
+    const range = document.querySelector('input[type="range"]');
+    if (range) {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      ).set;
+      setter.call(range, "5");
+      range.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+  await sleep(200);
+  await page.evaluate(() => {
+    [...document.querySelectorAll("button")]
+      .find((b) => b.textContent?.includes("开始考试"))
+      ?.click();
+  });
+  await page.waitForSelector(".option", { timeout: 10000 });
+
+  // 在第 1 题选 A，记录该选项的文本
+  await page.evaluate(() => {
+    document.querySelectorAll(".option")[0].click();
+  });
+  await sleep(300);
+  const pickedTextBefore = await page.evaluate(
+    () => document.querySelector(".option-selected")?.textContent?.slice(1).trim() ?? null,
+  );
+  // 记住会话 id：离开考试页后要能回到同一场考试
+  const examUrl = page.url();
+  const sessionId = new URL(examUrl).searchParams.get("session");
+  check("考试中可选中选项", pickedTextBefore !== null);
+
+  // 中途开启乱序，回到同一题，选择必须仍指向同一段文本
+  await setShuffle(true);
+  await page.goto(`${BASE}/exam?session=${sessionId}`, {
+    waitUntil: "networkidle2",
+  });
+  const resumed = page.url().includes("session=");
+  if (resumed) {
+    await page.waitForSelector(".option", { timeout: 10000 });
+    await sleep(400);
+    const pickedTextAfter = await page.evaluate(
+      () => document.querySelector(".option-selected")?.textContent?.slice(1).trim() ?? null,
+    );
+    check(
+      "切换乱序开关后，已选选项仍指向同一段选项文本",
+      pickedTextAfter !== null && pickedTextAfter === pickedTextBefore,
+      `切换前「${pickedTextBefore?.slice(0, 14)}」→ 切换后「${pickedTextAfter?.slice(0, 14)}」`,
+    );
+  } else {
+    check("切换乱序开关后，已选选项仍指向同一段选项文本", false, "未能回到考试会话");
+  }
+
+  // 收尾：恢复默认（关闭乱序）
+  await setShuffle(false);
+
+  // ---------------------------------------------------------- 15. 控制台错误与坏响应
   // 上面刻意发起的非法 id 请求会产生一条 404，属预期行为，统计时排除
   const intentional = [badIdUrl];
   const isIntentional = (s) => intentional.some((u) => s.includes(u));

@@ -6,14 +6,17 @@ import { useCallback, useMemo, useState } from "react";
 import { QuestionCard, type AnswerState, evaluate } from "@/components/question-card";
 import { ProgressBar } from "@/components/progress-bar";
 import { ScopePicker } from "@/components/scope-picker";
+import { StickyActions } from "@/components/sticky-actions";
 import {
   BANK_IDS,
   BANK_NAMES,
   bankMeta,
+  displayQuestion,
   filterByScope,
   getQuestions,
   isBankId,
   knowledgePoints,
+  optionSpace,
   questionKey,
 } from "@/lib/question-bank";
 import {
@@ -23,6 +26,7 @@ import {
   seqCursor,
   statOf,
   toggleStar,
+  updateSettings,
 } from "@/lib/store";
 import { useStore } from "@/lib/use-store";
 import type { BankId } from "@/lib/types";
@@ -64,6 +68,18 @@ export function PracticeClient() {
 
   const question = pool[pos];
 
+  // 选项乱序：按题目 ID 确定性打乱，答案字母同步重映射。
+  // 渲染与交互用「显示空间」，判分与存盘换算回「原始空间」，
+  // 因此切换乱序开关不会让已保存的作答错位。
+  const space = useMemo(
+    () => (question ? optionSpace(question, settings.shuffleOptions) : null),
+    [question, settings.shuffleOptions],
+  );
+  const shown = useMemo(
+    () => (question ? displayQuestion(question, settings.shuffleOptions) : question),
+    [question, settings.shuffleOptions],
+  );
+
   const goTo = useCallback(
     (next: number) => {
       const clamped = Math.max(0, Math.min(pool.length - 1, next));
@@ -84,14 +100,21 @@ export function PracticeClient() {
   );
 
   const submit = useCallback(async () => {
-    if (!question || selected.length === 0 || state !== "idle") return;
-    const result = evaluate(question, selected);
+    if (!question || !space || selected.length === 0 || state !== "idle") return;
+    // selected 是显示空间的字母，先换算回原始空间再判分与存盘
+    const sourceSelected = space.toSourceSelected(selected);
+    const result = evaluate(question, sourceSelected);
     setState(result);
-    await recordAttempt({ bank, question, selected, source: "practice" });
+    await recordAttempt({
+      bank,
+      question,
+      selected: sourceSelected,
+      source: "practice",
+    });
     if (result === "correct" && settings.autoNext) {
       window.setTimeout(() => goTo(pos + 1), 420);
     }
-  }, [question, selected, state, bank, pos, goTo, settings.autoNext]);
+  }, [question, space, selected, state, bank, pos, goTo, settings.autoNext]);
 
   if (!ready) {
     return (
@@ -164,15 +187,47 @@ export function PracticeClient() {
             </span>
           )}
         </div>
+
+        {/* 背题模式的展示方式切换：全部选项 / 只看答案。
+            选择会写入设置，下次进背题模式默认沿用。 */}
+        {mode === "memorize" && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-3">
+            <span className="text-xs text-[var(--text-subtle)]">显示方式</span>
+            <div className="flex gap-1" role="group" aria-label="背题显示方式">
+              <button
+                type="button"
+                aria-pressed={!settings.recallAnswerOnly}
+                className={`btn btn-sm ${!settings.recallAnswerOnly ? "btn-primary" : ""}`}
+                onClick={() => void updateSettings({ recallAnswerOnly: false })}
+              >
+                全部选项
+              </button>
+              <button
+                type="button"
+                aria-pressed={settings.recallAnswerOnly}
+                className={`btn btn-sm ${settings.recallAnswerOnly ? "btn-primary" : ""}`}
+                onClick={() => void updateSettings({ recallAnswerOnly: true })}
+              >
+                只看答案
+              </button>
+            </div>
+            <span className="text-xs text-[var(--text-subtle)]">
+              {settings.recallAnswerOnly
+                ? "只给出正确答案，适合快速记忆「题干 → 答案」"
+                : "展示全部选项并标出正确答案"}
+            </span>
+          </div>
+        )}
       </div>
 
       <QuestionCard
         bank={bank}
-        question={question}
-        selected={mode === "memorize" ? question.answer.split("") : selected}
+        question={shown}
+        selected={mode === "memorize" ? shown.answer.split("") : selected}
         onSelectedChange={setSelected}
         state={mode === "memorize" ? "idle" : state}
         reveal={mode === "memorize"}
+        answerOnly={mode === "memorize" && settings.recallAnswerOnly}
         keyboard={mode !== "memorize"}
         onSubmit={submit}
         onNext={() => goTo(pos + 1)}
@@ -183,21 +238,21 @@ export function PracticeClient() {
         showFigure={settings.showFigure}
       />
 
-      {mode === "practice" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => goTo(pos - 1)}
-            disabled={pos === 0}
-          >
-            ← 上一题
-          </button>
+      <StickyActions>
+        <button
+          type="button"
+          className="btn flex-none"
+          onClick={() => goTo(pos - 1)}
+          disabled={pos === 0}
+        >
+          ← 上一题
+        </button>
 
-          {state === "idle" ? (
+        {mode === "practice" &&
+          (state === "idle" ? (
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary flex-none"
               onClick={() => void submit()}
               disabled={selected.length === 0}
             >
@@ -205,25 +260,28 @@ export function PracticeClient() {
             </button>
           ) : (
             <span
-              className={`chip ${state === "correct" ? "chip-success" : "chip-danger"}`}
+              className={`chip flex-none ${
+                state === "correct" ? "chip-success" : "chip-danger"
+              }`}
               role="status"
             >
               {state === "correct" ? "回答正确" : "回答错误"}
             </span>
-          )}
+          ))}
 
+        <button
+          type="button"
+          className="btn flex-none"
+          onClick={() => goTo(pos + 1)}
+          disabled={pos >= pool.length - 1}
+        >
+          下一题 →
+        </button>
+
+        {mode === "practice" && (
           <button
             type="button"
-            className="btn"
-            onClick={() => goTo(pos + 1)}
-            disabled={pos >= pool.length - 1}
-          >
-            下一题 →
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-ghost"
+            className="btn btn-ghost flex-none"
             onClick={() => {
               setSelected([]);
               setState("idle");
@@ -232,47 +290,32 @@ export function PracticeClient() {
           >
             重做本题
           </button>
+        )}
 
-          <Link
-            href={`/browse?bank=${bank}&scope=${scope}&i=${pos}`}
-            className="btn btn-ghost ml-auto"
-          >
-            在题库中查看
-          </Link>
-        </div>
-      )}
-
-      {mode === "memorize" && (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => goTo(pos - 1)}
-            disabled={pos === 0}
-          >
-            ← 上一题
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => goTo(pos + 1)}
-            disabled={pos >= pool.length - 1}
-          >
-            下一题 →
-          </button>
-          <span className="ml-auto text-xs text-[var(--text-subtle)]">
-            背题模式不计入正确率
-          </span>
-        </div>
-      )}
+        <span className="ml-auto hidden text-xs text-[var(--text-subtle)] sm:block">
+          {mode === "memorize" ? (
+            "背题模式不计入正确率"
+          ) : (
+            <>
+              错题自动进
+              <Link href="/review" className="mx-1 text-[var(--accent-text)] underline">
+                错题本
+              </Link>
+              ，连对 {settings.autoRemoveStreak || "—"} 次移出
+            </>
+          )}
+        </span>
+      </StickyActions>
 
       {mode === "practice" && (
         <p className="px-1 text-xs leading-relaxed text-[var(--text-subtle)]">
-          小提示：多选题需选全所有正确选项才算答对。错题会自动进入
-          <Link href="/review" className="mx-1 text-[var(--accent-text)] underline">
-            错题本
+          多选题需选全所有正确选项才算答对。
+          <Link
+            href={`/browse?bank=${bank}&scope=${scope}&i=${pos}`}
+            className="ml-1 text-[var(--accent-text)] underline"
+          >
+            在题库中查看本题
           </Link>
-          ，连续答对 {settings.autoRemoveStreak || "—"} 次后自动移出。
         </p>
       )}
     </div>

@@ -57,6 +57,18 @@ export function SettingsPanel() {
           checked={settings.showFigure}
           onChange={(v) => void updateSettings({ showFigure: v })}
         />
+        <ToggleRow
+          label="选项乱序"
+          desc="打乱 A–D 的展示顺序，避免靠位置记答案；同一道题顺序固定，已作答记录不会错位。题库浏览页始终按原始顺序展示"
+          checked={settings.shuffleOptions}
+          onChange={(v) => void updateSettings({ shuffleOptions: v })}
+        />
+        <ToggleRow
+          label="背题模式只显示正确答案"
+          desc="进入背题模式时默认只看答案、不展示全部选项；也可以在背题页顶部临时切换，切换结果会被记住"
+          checked={settings.recallAnswerOnly}
+          onChange={(v) => void updateSettings({ recallAnswerOnly: v })}
+        />
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex-1">
             <div className="text-sm">错题自动移出阈值</div>

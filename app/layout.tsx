@@ -48,7 +48,9 @@ export default function RootLayout({
       <body className="min-h-dvh flex flex-col">
         <StorageNotice />
         <Nav />
-        <main className="flex-1 w-full mx-auto max-w-5xl px-4 pb-24 sm:pb-10 pt-4">
+        {/* pb 只需留一点余量：练习/考试等页面用 <StickyActions> 自带的等高占位
+            把内容顶到固定操作条之上，无需在这里预留大块空白。 */}
+        <main className="flex-1 w-full mx-auto max-w-5xl px-4 pb-3 sm:pb-6 pt-4">
           {children}
         </main>
         <footer className="hidden sm:block border-t border-[var(--border)] py-4 text-center text-xs text-[var(--text-subtle)]">

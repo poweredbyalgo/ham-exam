@@ -5,10 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { QuestionCard, type AnswerState, evaluate } from "@/components/question-card";
 import { ReviewQuestionList, type ReviewRowData } from "@/components/review-list";
+import { StickyActions } from "@/components/sticky-actions";
 import {
   BANK_IDS,
   BANK_NAMES,
+  displayQuestion,
   getQuestion,
+  optionSpace,
 } from "@/lib/question-bank";
 import {
   masteredCount,
@@ -197,7 +200,8 @@ function buildHref(bank: BankId | "all", tab: Tab, redo = false): string {
 // ---------------------------------------------------------------- 逐题重做
 
 function RedoRunner({ bank, tab }: { bank: BankId | "all"; tab: Tab }) {
-  const { stats } = useStore();
+  const { stats, settings } = useStore();
+  const shuffleOptions = settings.shuffleOptions;
   const keys = useMemo(() => {
     if (tab === "star") return starredKeys(bank === "all" ? undefined : bank);
     if (tab === "mastered") {
@@ -248,6 +252,9 @@ function RedoRunner({ bank, tab }: { bank: BankId | "all"; tab: Tab }) {
 
   const question = located!.question;
   const bankId = located!.bank;
+  // 与练习、考试同一口径：交互用显示空间，判分与存盘换算回原始空间
+  const space = optionSpace(question, shuffleOptions);
+  const shown = displayQuestion(question, shuffleOptions);
 
   const go = (next: number) => {
     setPos(next);
@@ -258,13 +265,19 @@ function RedoRunner({ bank, tab }: { bank: BankId | "all"; tab: Tab }) {
 
   const submit = async () => {
     if (selected.length === 0 || state !== "idle") return;
-    const result = evaluate(question, selected);
+    const sourceSelected = space.toSourceSelected(selected);
+    const result = evaluate(question, sourceSelected);
     setState(result);
     setTally((t) => ({
       correct: t.correct + (result === "correct" ? 1 : 0),
       wrong: t.wrong + (result === "wrong" ? 1 : 0),
     }));
-    await recordAttempt({ bank: bankId, question, selected, source: "review" });
+    await recordAttempt({
+      bank: bankId,
+      question,
+      selected: sourceSelected,
+      source: "review",
+    });
     if (result === "correct") {
       window.setTimeout(() => go(pos + 1), 600);
     }
@@ -286,7 +299,7 @@ function RedoRunner({ bank, tab }: { bank: BankId | "all"; tab: Tab }) {
 
       <QuestionCard
         bank={bankId}
-        question={question}
+        question={shown}
         selected={selected}
         onSelectedChange={setSelected}
         state={state}
@@ -298,28 +311,41 @@ function RedoRunner({ bank, tab }: { bank: BankId | "all"; tab: Tab }) {
         positionLabel={`第 ${pos + 1} 题`}
       />
 
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn" onClick={() => go(pos - 1)} disabled={pos === 0}>
+      <StickyActions>
+        <button
+          type="button"
+          className="btn flex-none"
+          onClick={() => go(pos - 1)}
+          disabled={pos === 0}
+        >
           ← 上一题
         </button>
         {state === "idle" ? (
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary flex-none"
             onClick={() => void submit()}
             disabled={selected.length === 0}
           >
             提交答案
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={() => go(pos + 1)}>
+          <button
+            type="button"
+            className="btn btn-primary flex-none"
+            onClick={() => go(pos + 1)}
+          >
             下一题 →
           </button>
         )}
-        <button type="button" className="btn btn-ghost" onClick={() => go(pos + 1)}>
+        <button
+          type="button"
+          className="btn btn-ghost flex-none"
+          onClick={() => go(pos + 1)}
+        >
           跳过
         </button>
-      </div>
+      </StickyActions>
     </div>
   );
 }

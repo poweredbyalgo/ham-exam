@@ -155,28 +155,128 @@ export function shuffle<T>(items: readonly T[], rand: () => number): T[] {
   return out;
 }
 
-/** 打乱选项顺序，返回新的选项数组与正确答案的新字母。 */
-export function shuffleOptions(
-  question: Question,
-  rand: () => number,
-): { options: [string, string, string, string]; answer: string } {
-  const order = shuffle([0, 1, 2, 3], rand);
-  const options = order.map((i) => question.options[i]) as [
+/**
+ * 选项乱序的确定性置换。
+ *
+ * 用 `questionId` 派生随机种子，因此**同一道题每次打开的顺序完全一致**：
+ *   - 同一题在练习、考试、错题复盘里顺序相同，不会出现「这题我见过」却对不上
+ *   - 已记录的作答（A/B/C/D）在下次打开时依然有意义
+ *   - 服务端与客户端算出同样的结果，不会 hydration 不一致
+ *
+ * 返回 `map`：`map[显示位置] = 原始位置`。
+ */
+export function optionPermutation(seedKey: string): number[] {
+  let h = 2166136261; // FNV-1a
+  for (let i = 0; i < seedKey.length; i += 1) {
+    h ^= seedKey.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return shuffle([0, 1, 2, 3], seededRandom(h >>> 0));
+}
+
+/** 恒等置换？顺序本来就等于原始顺序。 */
+function isIdentity(map: number[]): boolean {
+  return map.every((v, i) => v === i);
+}
+
+/** 字母 -> 位置下标（0..3） */
+const toIndex = (letter: string) => letter.charCodeAt(0) - 65;
+const toLetter = (index: number) => String.fromCharCode(65 + index);
+
+/**
+ * 选项乱序的完整坐标转换。
+ *
+ * 全站统一约定：**持久化与判分一律使用「原始空间」的字母**（即 dataset 中的
+ * A/B/C/D 与 `answer`），只有在渲染与键盘/点击交互的边界上才换算成「显示空间」。
+ * 这样选项乱序开关的切换不会影响任何已保存的作答 —— 否则用户在考试中途
+ * 切换乱序，已经选过的题会因为字母含义变化而错位。
+ */
+export interface OptionSpace {
+  /** map[显示位置] = 原始位置 */
+  map: number[];
+  shuffled: boolean;
+  /** 显示顺序下的四项选项文本 */
+  options: [string, string, string, string];
+  /** 原始空间的选中项 -> 显示空间（升序） */
+  toDisplaySelected: (sourceSelected: string[]) => string[];
+  /** 显示空间的选中项 -> 原始空间（升序） */
+  toSourceSelected: (displaySelected: string[]) => string[];
+}
+
+export function optionSpace(question: Question, shuffled: boolean): OptionSpace {
+  const map = shuffled ? optionPermutation(question.questionId) : [0, 1, 2, 3];
+  const options = map.map((i) => question.options[i]) as [
     string,
     string,
     string,
     string,
   ];
-  const answer = question.answer
+
+  if (isIdentity(map)) {
+    const same = (s: string[]) => [...new Set(s)].sort();
+    return {
+      map,
+      shuffled: false,
+      options,
+      toDisplaySelected: same,
+      toSourceSelected: same,
+    };
+  }
+
+  return {
+    map,
+    shuffled,
+    options,
+    toDisplaySelected: (sourceSelected) =>
+      sourceSelected
+        .map((l) => toLetter(map.indexOf(toIndex(l))))
+        .filter((l) => l >= "A" && l <= "D")
+        .sort(),
+    toSourceSelected: (displaySelected) =>
+      displaySelected
+        .map((l) => {
+          const pos = toIndex(l);
+          return pos >= 0 && pos < map.length ? toLetter(map[pos]) : "";
+        })
+        .filter(Boolean)
+        .sort(),
+  };
+}
+
+/** 把答案字母从原始空间重映射到显示空间（升序）。 */
+export function remapAnswer(answer: string, map: number[]): string {
+  if (isIdentity(map)) return answer;
+  return answer
     .split("")
     .map((letter) => {
-      const original = letter.charCodeAt(0) - 65;
-      const moved = order.indexOf(original);
-      return String.fromCharCode(65 + Math.max(0, moved));
+      const moved = map.indexOf(toIndex(letter));
+      return toLetter(moved < 0 ? toIndex(letter) : moved);
     })
     .sort()
     .join("");
-  return { options, answer };
+}
+
+/**
+ * 生成「展示用」的题目：按需打乱选项，并同步重映射答案字母。
+ *
+ * 只用于渲染与判分展示；写回存储时必须换算回原始空间
+ * （见 `optionSpace().toSourceSelected`）。`shuffled` 为 false 时原样返回，
+ * 保证 /browse 这类需要与源题库逐字段对照的视图仍按原始顺序展示。
+ */
+export function displayQuestion(question: Question, shuffled: boolean): Question {
+  if (!shuffled) return question;
+  const map = optionPermutation(question.questionId);
+  if (isIdentity(map)) return question;
+  return {
+    ...question,
+    options: map.map((i) => question.options[i]) as [
+      string,
+      string,
+      string,
+      string,
+    ],
+    answer: remapAnswer(question.answer, map),
+  };
 }
 
 /** 判定作答是否正确（多选需完全一致，与源题库答案规则一致） */

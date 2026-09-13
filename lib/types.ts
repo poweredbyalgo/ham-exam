@@ -126,6 +126,10 @@ export interface Settings {
   showFigure: boolean;
   /** 错题连续答对几次后自动移出（0 表示不自动移除） */
   autoRemoveStreak: number;
+  /** 选项乱序：打乱 A–D 的展示顺序（按题目 ID 确定性打乱，顺序稳定可复现） */
+  shuffleOptions: boolean;
+  /** 背题模式只显示正确答案，不展示全部选项 */
+  recallAnswerOnly: boolean;
 }
 
 /** 统计面板用 */

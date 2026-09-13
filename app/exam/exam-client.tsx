@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuestionCard } from "@/components/question-card";
+import { StickyActions } from "@/components/sticky-actions";
 import {
   BANK_IDS,
   BANK_NAMES,
   bankMeta,
+  displayQuestion,
   getQuestion,
   getQuestions,
+  isCorrect,
+  optionSpace,
   questionKey,
   seededRandom,
   shuffle,
@@ -274,11 +278,10 @@ function ExamRunner({ id }: { id: string }) {
     for (const key of session.keys) {
       const located = getQuestion(key);
       if (!located) continue;
+      // 会话里存的是原始空间的选择（A/B/C/D 对应 dataset 顺序），
+      // 因此切换选项乱序不会让已作答的题错位；这里直接按原始空间判分。
       const picked = session.answers[key]?.selected ?? [];
-      const ok =
-        picked.length > 0 &&
-        [...new Set(picked)].sort().join("") ===
-          located.question.answer.split("").sort().join("");
+      const ok = picked.length > 0 && isCorrect(picked, located.question.answer);
       if (ok) {
         correct += 1;
       } else {
@@ -369,19 +372,25 @@ function ExamRunner({ id }: { id: string }) {
     );
   }
 
-  const current = session.answers[session.keys[pos]];
-  // 考试过程中不判分：始终以「本次选择」为准，未选择则回落到已存记录
+  // 选项乱序坐标转换：session.answers 存的始终是「原始空间」字母，
+  // 交互与渲染用「显示空间」。原始空间是持久化字面量，因此乱序开关
+  // 的切换不会影响已保存的作答。
+  const space = optionSpace(question, settings.shuffleOptions);
+  const shownQuestion = displayQuestion(question, settings.shuffleOptions);
+  const currentSource = session.answers[session.keys[pos]]?.selected ?? [];
+  // 考试过程中不判分：优先用本次交互的显示空间选择，否则把已存的原始空间选择换算过来
   const effectiveSelected =
-    selected.length > 0 ? selected : (current?.selected ?? []);
+    selected.length > 0 ? selected : space.toDisplaySelected(currentSource);
 
-  const persistAnswer = (nextSelected: string[]) => {
+  const persistAnswer = (displaySelected: string[]) => {
     void saveExam({
       ...session,
       answers: {
         ...session.answers,
         [session.keys[pos]]: {
           key: session.keys[pos],
-          selected: nextSelected,
+          // 换算回原始空间后落盘
+          selected: space.toSourceSelected(displaySelected),
           submitted: false,
         },
       },
@@ -391,7 +400,14 @@ function ExamRunner({ id }: { id: string }) {
   const goTo = (next: number) => {
     const clamped = Math.max(0, Math.min(session.keys.length - 1, next));
     setPos(clamped);
-    setSelected(session.answers[session.keys[clamped]]?.selected ?? []);
+    const nextQ = getQuestion(session.keys[clamped])?.question;
+    const nextSource = session.answers[session.keys[clamped]]?.selected ?? [];
+    // selected 是显示空间的状态，进入新题时换算到该题的显示空间
+    setSelected(
+      nextQ && nextSource.length > 0
+        ? optionSpace(nextQ, settings.shuffleOptions).toDisplaySelected(nextSource)
+        : [],
+    );
     window.scrollTo({ top: 0 });
   };
 
@@ -434,7 +450,7 @@ function ExamRunner({ id }: { id: string }) {
 
       <QuestionCard
         bank={session.config.bank}
-        question={question}
+        question={shownQuestion}
         selected={effectiveSelected}
         onSelectedChange={(next) => {
           // 考试中不即时判分，也不回显对错：只记录选择
@@ -453,32 +469,41 @@ function ExamRunner({ id }: { id: string }) {
         showFigure={settings.showFigure}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn" onClick={() => goTo(pos - 1)} disabled={pos === 0}>
+      <StickyActions>
+        <button
+          type="button"
+          className="btn flex-none"
+          onClick={() => goTo(pos - 1)}
+          disabled={pos === 0}
+        >
           ← 上一题
         </button>
         <button
           type="button"
-          className="btn"
+          className="btn flex-none"
           onClick={() => {
             setSelected([]);
             persistAnswer([]);
           }}
         >
-          清除本题
+          清除
         </button>
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-primary flex-none"
           onClick={() => goTo(pos + 1)}
           disabled={pos >= session.keys.length - 1}
         >
           下一题 →
         </button>
-        <button type="button" className="btn btn-ghost ml-auto" onClick={() => setConfirming(true)}>
+        <button
+          type="button"
+          className="btn btn-ghost flex-none sm:ml-auto"
+          onClick={() => setConfirming(true)}
+        >
           交卷并评分
         </button>
-      </div>
+      </StickyActions>
 
       <AnswerSheet
         session={session}

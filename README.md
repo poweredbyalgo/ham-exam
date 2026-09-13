@@ -35,7 +35,8 @@ npm run start
 | 模块 | 能力 |
 | --- | --- |
 | **顺序练习** | 按题库顺序或指定章节 / 知识点逐题作答，自动记录断点续做 |
-| **背题模式** | 题干与答案同屏展示，考前快速过题，不计入正确率 |
+| **背题模式** | 题干与答案同屏，可切换「全部选项 / 只看答案」并记住选择，考前快速过题，不计入正确率 |
+| **选项乱序** | 可打乱 A–D 显示顺序（顺序按题号固定，答案与已作答记录不会错位） |
 | **模拟考试** | 带种子的随机组卷、可配题量/限时/及格线、限时自动交卷、失分知识点分布、逐题复盘 |
 | **错题本** | 自动收录错题，连续答对 N 次自动移出（N 可配），支持手动标记已掌握 |
 | **收藏夹** | 标记重点题并单独练习 |
@@ -44,6 +45,7 @@ npm run start
 | **数据下载** | 下载题库原始 PDF、处理后的题目 JSON（两种字段形态）与附图图片包，附 SHA-256 校验值 |
 | **附图** | 电路图 / 天线图内联渲染，点击放大 |
 | **键盘操作** | `A`–`D` 选择、`Enter` 提交/下一题、`←` `→` 翻题、`S` 收藏、`Esc` 关闭图片 |
+| **移动端友好** | 「上一题 · 提交 · 下一题」固定在屏幕底部（贴在标签栏之上），题干再长也不用拖着找按钮 |
 | **深色模式** | 跟随系统 / 浅色 / 深色三态，无闪白，偏好持久化 |
 | **PWA / 离线** | 可安装到桌面，首次访问后断网仍可练习 |
 | **数据管理** | 进度导出为 JSON 备份、导入恢复、一键清空 |
@@ -103,8 +105,8 @@ dataset/pdf/*.pdf ─► build_dataset.py ─► dataset/{A,B,C}.json ─► syn
 | `npm run dev` | 开发服务器 |
 | `npm run build` / `npm run start` | 生产构建 / 运行 |
 | `npm run check` | typecheck + lint + build |
-| `npm run test:smoke` | HTTP 层冒烟测试（18 项） |
-| `npm run test:e2e` | 真实浏览器端到端测试（35 项，需本机 Edge/Chrome） |
+| `npm run test:smoke` | HTTP 层冒烟测试（25 项） |
+| `npm run test:e2e` | 真实浏览器端到端测试（63 项，需本机 Edge/Chrome） |
 | `npm run sync-data` | `dataset/*.json` → `data/*.json` |
 | `npm run dataset:build` | 题库 PDF → `dataset/*.json` + `public/figures/`（需 Python + pymupdf） |
 | `npm run dataset:verify` | 校验题目数据与题库 PDF 逐字段一致 |
@@ -165,8 +167,8 @@ dataset/pdf/*.pdf ─► build_dataset.py ─► dataset/{A,B,C}.json ─► syn
 
 均通过：
 
-- **`npm run test:smoke`（18/18）**：路由与资源可访问、服务端渲染内容、PWA 资源、题库数据确实进入客户端 bundle。
-- **`npm run test:e2e`（35/35）**：用本机 Edge 真实运行 —— 键盘答题、判分、IndexedDB 落盘、附图渲染、错题本、考试全流程、深色模式、Service Worker、断网可用、禁用 JS 降级、无控制台错误与 4xx/5xx。
+- **`npm run test:smoke`（25/25）**：路由与资源可访问、服务端渲染内容、PWA 资源、下载入口文件有效性、题库数据确实进入客户端 bundle。
+- **`npm run test:e2e`（63/63）**：用本机 Edge 真实运行 —— 键盘答题、判分、IndexedDB 落盘、附图渲染、错题本、考试全流程、深色模式、Service Worker、断网可用、禁用 JS 降级、下载页与 PDF 下载、底部操作条在手机视口内的可用性、选项乱序的顺序稳定性与判分正确性、背题模式切换与记忆、无控制台错误与 4xx/5xx。
 - **`npm run check`**：typecheck + lint + build 无错误无警告。
 
 ---

@@ -112,6 +112,11 @@ interface QuestionCardProps {
   /** 题号显示，如 "12 / 683" */
   positionLabel?: string;
   showFigure?: boolean;
+  /**
+   * 只显示正确答案，不展示全部选项（背题模式的「只看答案」）。
+   * 需要在 reveal 为 true 时才有意义。
+   */
+  answerOnly?: boolean;
 }
 
 export function QuestionCard({
@@ -129,10 +134,12 @@ export function QuestionCard({
   onToggleStar,
   positionLabel,
   showFigure = true,
+  answerOnly = false,
 }: QuestionCardProps) {
   const multi = question.type === "multiple";
   const submitted = state !== "idle" || reveal;
   const answerLetters = question.answer.split("");
+  const hideOptions = reveal && answerOnly;
 
   const toggle = (letter: string) => {
     if (submitted) return;
@@ -249,48 +256,79 @@ export function QuestionCard({
 
       {showFigure && question.figure && <FigureView file={question.figure} />}
 
-      <ul className="mt-4 space-y-2">
-        {OPTION_LETTERS.map((letter, i) => (
-          <li key={letter}>
-            <button
-              type="button"
-              className={optionClass(letter)}
-              onClick={() => toggle(letter)}
-              disabled={submitted}
-              aria-pressed={selected.includes(letter)}
-            >
-              <span className="option-key">{letter}</span>
-              <span className="flex-1">{question.options[i]}</span>
-              {submitted && answerLetters.includes(letter) && (
-                <span className="flex-none self-center text-xs font-medium text-[var(--success)]">
-                  正确答案
+      {hideOptions ? (
+        /* 背题模式「只看答案」：直接给出正确答案，不展示全部选项，
+           让注意力落在「题干 → 答案」这一对映射上 */
+        <div className="mt-4 rounded-xl border border-[var(--success)]/40 bg-[var(--success-soft)] p-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--success)]">
+            <span className="font-medium">
+              {multi ? "多项选择 · 正确答案" : "单项选择 · 正确答案"}
+            </span>
+            <span className="font-mono font-semibold tracking-wider">
+              {question.answer}
+            </span>
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {answerLetters.map((letter) => (
+              <li key={letter} className="flex gap-2.5">
+                <span className="option-key bg-[var(--success)] text-white">
+                  {letter}
                 </span>
-              )}
-              {submitted && !answerLetters.includes(letter) && selected.includes(letter) && (
-                <span className="flex-none self-center text-xs font-medium text-[var(--danger)]">
-                  你的选择
+                <span className="flex-1 text-[0.9375rem] leading-relaxed text-[var(--text)]">
+                  {question.options[letter.charCodeAt(0) - 65]}
                 </span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <>
+          <ul className="mt-4 space-y-2">
+            {OPTION_LETTERS.map((letter, i) => (
+              <li key={letter}>
+                <button
+                  type="button"
+                  className={optionClass(letter)}
+                  onClick={() => toggle(letter)}
+                  disabled={submitted}
+                  aria-pressed={selected.includes(letter)}
+                >
+                  <span className="option-key">{letter}</span>
+                  <span className="flex-1">{question.options[i]}</span>
+                  {submitted && answerLetters.includes(letter) && (
+                    <span className="flex-none self-center text-xs font-medium text-[var(--success)]">
+                      正确答案
+                    </span>
+                  )}
+                  {submitted &&
+                    !answerLetters.includes(letter) &&
+                    selected.includes(letter) && (
+                      <span className="flex-none self-center text-xs font-medium text-[var(--danger)]">
+                        你的选择
+                      </span>
+                    )}
+                </button>
+              </li>
+            ))}
+          </ul>
 
-      {reveal && !multi && (
-        <p className="mt-3 text-sm text-[var(--text-muted)]">
-          本题为单选题，正确答案：
-          <strong className="text-[var(--success)]">{question.answer}</strong>
-        </p>
-      )}
-      {reveal && multi && (
-        <p className="mt-3 text-sm text-[var(--text-muted)]">
-          本题为多选题，正确答案：
-          <strong className="text-[var(--success)]">
-            {answerLetters
-              .map((l) => `${l}. ${question.options[l.charCodeAt(0) - 65]}`)
-              .join("　")}
-          </strong>
-        </p>
+          {reveal && !multi && (
+            <p className="mt-3 text-sm text-[var(--text-muted)]">
+              本题为单选题，正确答案：
+              <strong className="text-[var(--success)]">{question.answer}</strong>
+            </p>
+          )}
+          {reveal && multi && (
+            <p className="mt-3 text-sm text-[var(--text-muted)]">
+              本题为多选题，正确答案：
+              <strong className="text-[var(--success)]">
+                {answerLetters
+                  .map((l) => `${l}. ${question.options[l.charCodeAt(0) - 65]}`)
+                  .join("　")}
+              </strong>
+            </p>
+          )}
+        </>
       )}
 
       {keyboard && (
