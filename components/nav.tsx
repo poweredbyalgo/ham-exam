@@ -37,6 +37,10 @@ export function Nav() {
       <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-1 px-4">
           <Brand />
+          {/* 页面级操作插槽（如练习页的筛选入口），仅移动端使用。
+              用 ml-auto 把它推到右侧；ml-auto 只在这一个元素上，
+              因此无内容时不影响其余布局。 */}
+          <div id="header-actions" className="ml-auto flex min-w-0 items-center sm:hidden" />
           <nav className="ml-3 hidden sm:flex items-center gap-0.5" aria-label="主导航">
             {NAV_ITEMS.map((item) => {
               const active = isActive(pathname, item.href);
@@ -56,7 +60,7 @@ export function Nav() {
               );
             })}
           </nav>
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="flex items-center gap-0.5 sm:ml-auto">
             {SECONDARY_ITEMS.map((item) => {
               const active = isActive(pathname, item.href);
               return (

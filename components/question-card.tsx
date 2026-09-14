@@ -46,8 +46,8 @@ export function FigureView({
             alt={`附图 ${file}`}
             loading="lazy"
             className={`mx-auto w-auto object-contain ${
-              compact ? "max-h-40" : "max-h-72"
-            }`}
+            compact ? "max-h-[min(24vh,10rem)]" : "max-h-[min(38vh,18rem)]"
+          }`}
           />
           <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
             点击放大
@@ -219,6 +219,9 @@ export function QuestionCard({
 
   return (
     <div className="card p-4 sm:p-5">
+      {/* 元信息 chips：窄屏手机上 6 个 chip 会换行成 2–3 行，把题干推到
+          折叠线以下。移动端只保留「题号 / 题型 / 知识点」，题库、编号、
+          题号 ID 等核对性信息 ≥sm 再显示。 */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {positionLabel && (
           <span className="font-mono text-[var(--text-subtle)]">{positionLabel}</span>
@@ -226,33 +229,33 @@ export function QuestionCard({
         <span className={multi ? "chip chip-warn" : "chip"}>
           {multi ? "多选题" : "单选题"}
         </span>
-        <span className="chip">{bank} 类</span>
+        <span className="chip hidden sm:inline-flex">{bank} 类</span>
         <span className="chip">知识点 {question.knowledgePoint}</span>
         {question.bankId ? (
-          <span className="chip font-mono">{question.bankId}</span>
+          <span className="chip font-mono hidden sm:inline-flex">{question.bankId}</span>
         ) : (
-          <span className="chip chip-warn" title="源题库中该题的总题库编号为空">
+          <span className="chip chip-warn hidden sm:inline-flex" title="源题库中该题的总题库编号为空">
             编号缺失
           </span>
         )}
-        <span className="chip font-mono">{question.questionId}</span>
+        <span className="chip font-mono hidden sm:inline-flex">{question.questionId}</span>
         {onToggleStar && (
           <button
             type="button"
             onClick={onToggleStar}
-            className="btn btn-ghost btn-sm ml-auto"
+            className="btn btn-ghost btn-sm ml-auto px-2"
             aria-pressed={starred}
+            aria-label={starred ? "取消收藏本题" : "收藏本题"}
             title="收藏本题（快捷键 S）"
           >
             <StarIcon filled={!!starred} />
-            {starred ? "已收藏" : "收藏"}
+            {/* 文字只在 ≥sm 显示，窄屏只留图标，避免 chips 换行占用题干空间 */}
+            <span className="hidden sm:inline">{starred ? "已收藏" : "收藏"}</span>
           </button>
         )}
       </div>
 
-      <h2 className="mt-3 text-[1.0625rem] font-medium leading-relaxed">
-        {question.stem}
-      </h2>
+      <h2 className="q-stem mt-3 font-medium">{question.stem}</h2>
 
       {showFigure && question.figure && <FigureView file={question.figure} />}
 

@@ -59,11 +59,13 @@ export function BrowseClient() {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        <aside className="card h-fit p-3 lg:sticky lg:top-20">
+        {/* 移动端章节导航有十几项、占半屏以上，排在题目之后，
+            避免打开页面先看到一堵目录墙、题目被推到折叠线以下 */}
+        <aside className="card order-2 h-fit p-3 lg:order-none lg:sticky lg:top-20">
           <ScopeLinkList bank={bank} scope={scope} mode="browse" />
         </aside>
 
-        <div className="space-y-3">
+        <div className="order-1 space-y-3 lg:order-none">
           {slice.map((q, i) => {
             const absolute = start + i;
             const focused = Number.isFinite(focusIndex) && absolute === focusIndex;

@@ -48,9 +48,10 @@ export default function RootLayout({
       <body className="min-h-dvh flex flex-col">
         <StorageNotice />
         <Nav />
-        {/* pb 只需留一点余量：练习/考试等页面用 <StickyActions> 自带的等高占位
-            把内容顶到固定操作条之上，无需在这里预留大块空白。 */}
-        <main className="flex-1 w-full mx-auto max-w-5xl px-4 pb-3 sm:pb-6 pt-4">
+        {/* 移动端有固定底部标签栏（3.5rem + Home 指示条），内容必须留出等高余量，
+            否则首页/浏览/统计/错题列表等页面的最后一块会被永久遮住。
+            练习/考试页的 <StickyActions> 自带占位，这里多出的空白只是滚动余量，无害。 */}
+        <main className="flex-1 w-full mx-auto max-w-5xl px-4 pt-4 pb-[calc(4.25rem+env(safe-area-inset-bottom))] sm:pb-6">
           {children}
         </main>
         <footer className="hidden sm:block border-t border-[var(--border)] py-4 text-center text-xs text-[var(--text-subtle)]">

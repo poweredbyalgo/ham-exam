@@ -61,8 +61,10 @@ export function ServiceWorkerRegistrar() {
 
   if (!updateReady) return null;
 
+  // 移动端要避开底部导航栏与练习/考试页的固定操作条（两者叠加约
+  // 108px + safe-area），否则「刷新」按钮会被操作条盖住点不到
   return (
-    <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 sm:bottom-6">
+    <div className="fixed bottom-[calc(8rem+env(safe-area-inset-bottom))] left-1/2 z-40 -translate-x-1/2 sm:bottom-6">
       <div className="card flex items-center gap-3 px-4 py-2 shadow-[var(--shadow-lg)]">
         <span className="text-sm">发现新版本</span>
         <button

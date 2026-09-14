@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { QuestionCard, type AnswerState, evaluate } from "@/components/question-card";
 import { ProgressBar } from "@/components/progress-bar";
-import { ScopePicker } from "@/components/scope-picker";
+import { ScopeOptions, ScopePicker, scopeLabel } from "@/components/scope-picker";
 import { StickyActions } from "@/components/sticky-actions";
 import {
   BANK_IDS,
@@ -136,39 +137,17 @@ export function PracticeClient() {
   const answered = stat?.attempts ?? 0;
 
   return (
-    <div className="space-y-4">
-      <div className="card flex flex-wrap items-center gap-2 p-3">
-        <div className="flex items-center gap-1">
-          {BANK_IDS.map((b) => (
-            <Link
-              key={b}
-              href={`/practice?bank=${b}${mode === "memorize" ? "&mode=memorize" : ""}`}
-              className={`btn btn-sm ${b === bank ? "btn-primary" : "btn-ghost"}`}
-            >
-              {BANK_NAMES[b]}
-            </Link>
-          ))}
-        </div>
-
+    <div className="practice-page space-y-2 sm:space-y-4">
+      {/* 桌面端筛选栏；手机端整条隐藏，改由 header 中的入口（MobileFilters
+          通过 portal 挂到 #header-actions）以底部弹层形式提供同样的筛选。 */}
+      <div className="card hidden flex-nowrap items-center gap-2 p-3 sm:flex">
+        <BankTabs bank={bank} mode={mode} />
         <div className="h-5 w-px bg-[var(--border)]" aria-hidden />
-
-        <div className="flex items-center gap-1">
-          <Link
-            href={`/practice?bank=${bank}&scope=${scope}`}
-            className={`btn btn-sm ${mode === "practice" ? "btn-primary" : "btn-ghost"}`}
-          >
-            练习
-          </Link>
-          <Link
-            href={`/practice?bank=${bank}&scope=${scope}&mode=memorize`}
-            className={`btn btn-sm ${mode === "memorize" ? "btn-primary" : "btn-ghost"}`}
-          >
-            背题
-          </Link>
-        </div>
-
-        <ScopePicker bank={bank} scope={scope} mode={mode} className="ml-auto" />
+        <ModeTabs bank={bank} scope={scope} mode={mode} />
+        <ScopePicker bank={bank} scope={scope} mode={mode} className="ml-auto min-w-0" />
       </div>
+
+      <MobileFilters bank={bank} scope={scope} mode={mode} />
 
       <div className="card p-3">
         <div className="flex items-center gap-3">
@@ -211,7 +190,8 @@ export function PracticeClient() {
                 只看答案
               </button>
             </div>
-            <span className="text-xs text-[var(--text-subtle)]">
+            {/* 说明文字只在 ≥sm 显示，手机上把这一行的高度让给题目 */}
+            <span className="hidden text-xs text-[var(--text-subtle)] sm:inline">
               {settings.recallAnswerOnly
                 ? "只给出正确答案，适合快速记忆「题干 → 答案」"
                 : "展示全部选项并标出正确答案"}
@@ -238,21 +218,38 @@ export function PracticeClient() {
         showFigure={settings.showFigure}
       />
 
+      {mode === "practice" && (
+        <p className="hidden px-1 text-xs leading-relaxed text-[var(--text-subtle)] sm:block">
+          多选题需选全所有正确选项才算答对。
+          <Link
+            href={`/browse?bank=${bank}&scope=${scope}&i=${pos}`}
+            className="ml-1 text-[var(--accent-text)] underline"
+          >
+            在题库中查看本题
+          </Link>
+        </p>
+      )}
+
+      {/* 底部操作条：手机上「上一题 / 下一题」只保留图标（触控目标不变），
+          中间主操作拉伸占满剩余宽度，「重做本题」也收为图标，
+          整条始终单行，不随文案换行占掉题目空间。 */}
       <StickyActions>
         <button
           type="button"
-          className="btn flex-none"
+          className="btn flex-none px-3"
           onClick={() => goTo(pos - 1)}
           disabled={pos === 0}
+          aria-label="上一题"
         >
-          ← 上一题
+          <ChevronIcon dir="left" />
+          <span className="hidden sm:inline">上一题</span>
         </button>
 
         {mode === "practice" &&
           (state === "idle" ? (
             <button
               type="button"
-              className="btn btn-primary flex-none"
+              className="btn btn-primary min-w-0 flex-1 sm:flex-none"
               onClick={() => void submit()}
               disabled={selected.length === 0}
             >
@@ -260,7 +257,7 @@ export function PracticeClient() {
             </button>
           ) : (
             <span
-              className={`chip flex-none ${
+              className={`chip justify-center flex-1 sm:flex-none ${
                 state === "correct" ? "chip-success" : "chip-danger"
               }`}
               role="status"
@@ -269,26 +266,37 @@ export function PracticeClient() {
             </span>
           ))}
 
+        {mode === "memorize" && (
+          <span className="min-w-0 flex-1 text-center text-xs text-[var(--text-subtle)] sm:flex-none">
+            第 {pos + 1} / {pool.length} 题
+          </span>
+        )}
+
         <button
           type="button"
-          className="btn flex-none"
+          className="btn flex-none px-3"
           onClick={() => goTo(pos + 1)}
           disabled={pos >= pool.length - 1}
+          aria-label="下一题"
         >
-          下一题 →
+          <span className="hidden sm:inline">下一题</span>
+          <ChevronIcon dir="right" />
         </button>
 
         {mode === "practice" && (
           <button
             type="button"
-            className="btn btn-ghost flex-none"
+            className="btn btn-ghost flex-none px-3"
             onClick={() => {
               setSelected([]);
               setState("idle");
             }}
             disabled={state === "idle" && selected.length === 0}
+            aria-label="重做本题"
+            title="重做本题"
           >
-            重做本题
+            <RedoIcon />
+            <span className="hidden sm:inline">重做本题</span>
           </button>
         )}
 
@@ -306,19 +314,221 @@ export function PracticeClient() {
           )}
         </span>
       </StickyActions>
-
-      {mode === "practice" && (
-        <p className="px-1 text-xs leading-relaxed text-[var(--text-subtle)]">
-          多选题需选全所有正确选项才算答对。
-          <Link
-            href={`/browse?bank=${bank}&scope=${scope}&i=${pos}`}
-            className="ml-1 text-[var(--accent-text)] underline"
-          >
-            在题库中查看本题
-          </Link>
-        </p>
-      )}
     </div>
+  );
+}
+
+function BankTabs({ bank, mode }: { bank: BankId; mode: Mode }) {
+  return (
+    <div
+      className="flex flex-none items-center gap-0.5 rounded-lg bg-[var(--surface-2)] p-0.5"
+      role="group"
+      aria-label="选择题库"
+    >
+      {BANK_IDS.map((b) => (
+        <Link
+          key={b}
+          href={`/practice?bank=${b}${mode === "memorize" ? "&mode=memorize" : ""}`}
+          aria-current={b === bank ? "page" : undefined}
+          className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            b === bank
+              ? "bg-[var(--surface)] text-[var(--text)] shadow-sm"
+              : "text-[var(--text-muted)]"
+          }`}
+        >
+          {BANK_NAMES[b]}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function ModeTabs({
+  bank,
+  scope,
+  mode,
+}: {
+  bank: BankId;
+  scope: string;
+  mode: Mode;
+}) {
+  return (
+    <div
+      className="flex flex-none items-center gap-0.5 rounded-lg bg-[var(--surface-2)] p-0.5"
+      role="group"
+      aria-label="切换模式"
+    >
+      <Link
+        href={`/practice?bank=${bank}&scope=${scope}`}
+        aria-current={mode === "practice" ? "page" : undefined}
+        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+          mode === "practice"
+            ? "bg-[var(--surface)] text-[var(--text)] shadow-sm"
+            : "text-[var(--text-muted)]"
+        }`}
+      >
+        练习
+      </Link>
+      <Link
+        href={`/practice?bank=${bank}&scope=${scope}&mode=memorize`}
+        aria-current={mode === "memorize" ? "page" : undefined}
+        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+          mode === "memorize"
+            ? "bg-[var(--surface)] text-[var(--text)] shadow-sm"
+            : "text-[var(--text-muted)]"
+        }`}
+      >
+        背题
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * 手机端筛选入口：把题库 / 模式 / 范围收进 header 右侧的一个按钮，
+ * 点击后以底部弹层展示全部筛选。页面顶部不再占用一整行卡片，
+ * 题目从折叠线上方就开始显示。
+ *
+ * 通过 portal 挂到 Nav 预留的 #header-actions 插槽（该插槽 ≥sm 隐藏，
+ * 因此这里无需再做响应式判断）。
+ */
+function MobileFilters({
+  bank,
+  scope,
+  mode,
+}: {
+  bank: BankId;
+  scope: string;
+  mode: Mode;
+}) {
+  const router = useRouter();
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setSlot(document.getElementById("header-actions"));
+  }, []);
+
+  // 弹层单独 portal 到 body：header 有 backdrop-filter，会把 fixed 后代
+  // 的包含块限制在 header 内，底部弹层必须挂在 body 下才能贴住视口。
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  if (!slot) return null;
+
+  const pick = (nextScope: string) => {
+    setOpen(false);
+    const qs = new URLSearchParams({ bank, scope: nextScope });
+    if (mode === "memorize") qs.set("mode", "memorize");
+    router.push(`/practice?${qs.toString()}`);
+  };
+
+  const trigger = (
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      className="btn btn-sm min-w-0 max-w-[15rem] px-2"
+    >
+      <span className="font-semibold">{bank}</span>
+      <span aria-hidden className="text-[var(--text-subtle)]">
+        ·
+      </span>
+      <span className="flex-none">{mode === "memorize" ? "背题" : "练习"}</span>
+      <span aria-hidden className="text-[var(--text-subtle)]">
+        ·
+      </span>
+      <span className="min-w-0 truncate">{scopeLabel(bank, scope)}</span>
+      <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden className="flex-none">
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </button>
+  );
+
+  const sheet = open ? (
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/50"
+      role="dialog"
+      aria-modal="true"
+      aria-label="筛选设置"
+      onClick={() => setOpen(false)}
+    >
+      <div
+        className="mx-auto max-h-[75dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">筛选</h3>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setOpen(false)}
+          >
+            完成
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <BankTabs bank={bank} mode={mode} />
+          <ModeTabs bank={bank} scope={scope} mode={mode} />
+        </div>
+        <div className="mt-3 border-t border-[var(--border)] pt-2">
+          <ScopeOptions bank={bank} scope={scope} onPick={pick} />
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      {createPortal(trigger, slot)}
+      {sheet && createPortal(sheet, document.body)}
+    </>
+  );
+}
+
+function ChevronIcon({ dir }: { dir: "left" | "right" }) {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={dir === "left" ? { transform: "rotate(180deg)" } : undefined}
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
   );
 }
 

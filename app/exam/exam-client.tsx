@@ -469,6 +469,12 @@ function ExamRunner({ id }: { id: string }) {
         showFigure={settings.showFigure}
       />
 
+      <AnswerSheet
+        session={session}
+        pos={pos}
+        onJump={(i) => goTo(i)}
+      />
+
       <StickyActions>
         <button
           type="button"
@@ -504,12 +510,6 @@ function ExamRunner({ id }: { id: string }) {
           交卷并评分
         </button>
       </StickyActions>
-
-      <AnswerSheet
-        session={session}
-        pos={pos}
-        onJump={(i) => goTo(i)}
-      />
 
       {confirming && (
         <div

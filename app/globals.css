@@ -247,12 +247,20 @@ button {
     font-size: 0.875rem;
   }
 
+  /* 题干：同样随视口缩放，小屏收紧以腾出纵向空间，大屏保持可读字号 */
+  .q-stem {
+    font-size: clamp(0.9375rem, 0.85rem + 0.7vw, 1.0625rem);
+    line-height: 1.55;
+  }
+
   /* 选项按钮 */
   .option {
     display: flex;
     gap: 0.7rem;
     width: 100%;
-    padding: 0.7rem 0.85rem;
+    /* 字号与内边距随视口线性缩放：320px 窄屏约 0.85rem，≥640px 封顶 0.9375rem，
+       保证小屏手机上一整道题（题干 + 四个选项）尽量不溢出首屏。 */
+    padding: clamp(0.5rem, 0.4rem + 1vw, 0.7rem) clamp(0.65rem, 0.5rem + 1vw, 0.85rem);
     border-radius: 10px;
     border: 1.5px solid var(--border);
     background: var(--surface);
@@ -261,7 +269,7 @@ button {
     transition:
       border-color 0.12s,
       background 0.12s;
-    font-size: 0.9375rem;
+    font-size: clamp(0.85rem, 0.78rem + 0.6vw, 0.9375rem);
     line-height: 1.6;
   }
   .option:hover:not(:disabled) {
@@ -354,5 +362,27 @@ button {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* 矮屏手机（如 320×568、≤620px 高）：进一步压缩练习页纵向间距，
+   让「题干 + 四个选项」尽量完整落在一屏内，减少滚动。 */
+@media (max-height: 620px) {
+  .practice-page {
+    row-gap: 0.375rem;
+  }
+  .practice-page .card {
+    padding: 0.5rem 0.625rem;
+  }
+  .practice-page .q-stem {
+    margin-top: 0.5rem;
+    font-size: 0.9375rem;
+  }
+  .practice-page .option {
+    padding: 0.375rem 0.55rem;
+    font-size: 0.8125rem;
+  }
+  .practice-page ul.space-y-2 > * + * {
+    margin-top: 0.375rem;
   }
 }
