@@ -5,6 +5,7 @@
  * 设计取舍：不使用服务端渲染任何用户数据 —— 所有进度都在浏览器本地，
  * 因此服务端渲染阶段 store 始终是「未加载」空态，避免 hydration 不一致。
  */
+import { DEFAULT_LADDER, newCramItem } from "./cram";
 import {
   STORES,
   idbClear,
@@ -23,6 +24,8 @@ import {
 import type {
   Attempt,
   BankId,
+  CramItem,
+  CramPlan,
   ExamResult,
   ExamSession,
   KnowledgePointStat,
@@ -52,6 +55,10 @@ interface State {
   exams: Record<string, ExamSession>;
   results: ExamResult[];
   settings: Settings;
+  /** 突击模式：每题记忆状态 */
+  cram: Record<string, CramItem>;
+  /** 突击模式：当前计划（单行） */
+  cramPlan: CramPlan | null;
 }
 
 const SETTINGS_ID = "app";
@@ -65,6 +72,8 @@ let state: State = {
   exams: {},
   results: [],
   settings: DEFAULT_SETTINGS,
+  cram: {},
+  cramPlan: null,
 };
 
 const listeners = new Set<() => void>();
@@ -99,7 +108,7 @@ export function ensureLoaded(): Promise<void> {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     try {
-      const [stats, attempts, seq, exams, results, settingsRows] =
+      const [stats, attempts, seq, exams, results, settingsRows, cramRows, planRows] =
         await Promise.all([
           idbGetAll<QuestionStat>(STORES.stats),
           idbGetAll<Attempt>(STORES.attempts),
@@ -107,6 +116,8 @@ export function ensureLoaded(): Promise<void> {
           idbGetAll<ExamSession>(STORES.exams),
           idbGetAll<ExamResult>(STORES.results),
           idbGetAll<Settings & { id: string }>(STORES.settings),
+          idbGetAll<CramItem>(STORES.cram),
+          idbGetAll<CramPlan>(STORES.cramPlan),
         ]);
 
       emit({
@@ -117,6 +128,8 @@ export function ensureLoaded(): Promise<void> {
         exams: Object.fromEntries(exams.map((e) => [e.id, e])),
         results: results.sort((a, b) => b.finishedAt - a.finishedAt),
         settings: { ...DEFAULT_SETTINGS, ...(settingsRows[0] ?? {}) },
+        cram: Object.fromEntries(cramRows.map((c) => [c.key, c])),
+        cramPlan: planRows[0] ?? null,
       });
     } catch (err) {
       emit({
@@ -384,8 +397,12 @@ export function seqCursor(id: string): number {
   return state.seq[id]?.cursor ?? 0;
 }
 
-export async function saveSeqCursor(id: string, cursor: number): Promise<void> {
-  const row: SeqProgress = { id, cursor, updatedAt: Date.now() };
+export async function saveSeqCursor(
+  id: string,
+  cursor: number,
+  keys?: string[],
+): Promise<void> {
+  const row: SeqProgress = { id, cursor, updatedAt: Date.now(), ...(keys ? { keys } : {}) };
   emit({ seq: { ...state.seq, [id]: row } });
   await idbPut(STORES.seq, row).catch(() => undefined);
 }
@@ -425,6 +442,53 @@ export async function updateSettings(patch: Partial<Settings>): Promise<void> {
   const settings = { ...state.settings, ...patch };
   emit({ settings });
   await idbPut(STORES.settings, { id: SETTINGS_ID, ...settings }).catch(
+    () => undefined,
+  );
+}
+
+// ---------------------------------------------------------------- 突击模式
+
+const CRAM_PLAN_ID = "plan";
+
+/**
+ * 建立（或重建）突击计划：把该库全部题目初始化为 new。
+ * 单事务批量写入，683 题量级下依然很快。
+ */
+export async function startCramPlan(
+  bank: BankId,
+  examAt: number,
+  opts: { ladder?: number[]; batchSize?: number } = {},
+): Promise<void> {
+  const now = Date.now();
+  const plan: CramPlan = {
+    id: CRAM_PLAN_ID,
+    bank,
+    examAt,
+    startedAt: now,
+    ladder: opts.ladder ?? DEFAULT_LADDER,
+    batchSize: opts.batchSize ?? 40,
+  };
+  const items: CramItem[] = getQuestions(bank).map((q) =>
+    newCramItem(bank, questionKey(bank, q), now),
+  );
+
+  emit({ cramPlan: plan, cram: Object.fromEntries(items.map((i) => [i.key, i])) });
+  await Promise.all([idbClear(STORES.cram), idbClear(STORES.cramPlan)])
+    .then(() =>
+      Promise.all([idbPutMany(STORES.cram, items), idbPut(STORES.cramPlan, plan)]),
+    )
+    .catch(() => emit({ storageError: "写入本地存储失败，突击计划可能未保存" }));
+}
+
+export async function saveCramItem(item: CramItem): Promise<void> {
+  emit({ cram: { ...state.cram, [item.key]: item } });
+  await idbPut(STORES.cram, item).catch(() => undefined);
+}
+
+/** 清空突击计划与进度（不影响练习/考试数据） */
+export async function resetCramPlan(): Promise<void> {
+  emit({ cram: {}, cramPlan: null });
+  await Promise.all([idbClear(STORES.cram), idbClear(STORES.cramPlan)]).catch(
     () => undefined,
   );
 }

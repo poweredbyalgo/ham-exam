@@ -48,6 +48,12 @@ export default function HomePage() {
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <ModeCard
+            href="/cram"
+            title="考前突击"
+            desc="基于遗忘曲线的多轮复习调度：到期才出现、答对拉长间隔、答错即时回炉，适合 1–2 天冲刺。"
+            icon="⚡"
+          />
+          <ModeCard
             href="/practice"
             title="顺序练习"
             desc="按题库原始顺序或指定章节逐题练习，自动记录断点，下次接着做。"

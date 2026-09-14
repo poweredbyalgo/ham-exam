@@ -88,7 +88,7 @@ export interface Attempt {
   source: PracticeSource;
 }
 
-export type PracticeSource = "practice" | "exam" | "review" | "browse";
+export type PracticeSource = "practice" | "exam" | "review" | "browse" | "cram";
 
 /** 每道题的累计状态（用于进度、错题本、收藏） */
 export interface QuestionStat {
@@ -114,6 +114,8 @@ export interface SeqProgress {
   id: string;
   cursor: number;
   updatedAt: number;
+  /** 突击模式会话的剩余题目队列（其他场景不写此字段） */
+  keys?: string[];
 }
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -187,6 +189,36 @@ export interface ExamSession {
   remaining: number;
   startedAt: number;
   finishedAt: number | null;
+}
+
+/** 突击模式：单题记忆状态 */
+export type CramStatus = "new" | "learning" | "scheduled" | "mastered";
+
+export interface CramItem {
+  /** 题目定位键，复用 questionKey()，如 "A:123" */
+  key: string;
+  bank: BankId;
+  /** 当前所处间隔阶梯下标 */
+  step: number;
+  /** 下次到期时间戳 */
+  dueAt: number;
+  /** 累计答错 / 自评「没记住」次数 */
+  lapses: number;
+  status: CramStatus;
+  lastAt: number;
+}
+
+/** 突击模式：复习计划（单行记录） */
+export interface CramPlan {
+  id: "plan";
+  bank: BankId;
+  /** 考试时间戳 */
+  examAt: number;
+  startedAt: number;
+  /** 间隔阶梯（分钟），默认 [0, 10, 60, 360, 1440] */
+  ladder: number[];
+  /** 每会话引入的新题数 */
+  batchSize: number;
 }
 
 export interface ExamResult {

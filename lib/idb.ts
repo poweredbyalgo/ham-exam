@@ -14,7 +14,7 @@
  * localStorage 的 `crac-practice:theme` 键同理（见 lib/theme-script.ts）。
  */
 export const DB_NAME = "crac-practice";
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const STORES = {
   /** 每题累计状态：错题、收藏、正确率 */
@@ -29,6 +29,10 @@ export const STORES = {
   results: "results",
   /** 设置 */
   settings: "settings",
+  /** 突击模式：单题记忆状态 */
+  cram: "cram",
+  /** 突击模式：复习计划（单行） */
+  cramPlan: "cramPlan",
 } as const;
 
 export type StoreName = (typeof STORES)[keyof typeof STORES];
@@ -77,6 +81,14 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORES.settings)) {
         db.createObjectStore(STORES.settings, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(STORES.cram)) {
+        const store = db.createObjectStore(STORES.cram, { keyPath: "key" });
+        store.createIndex("bank", "bank");
+        store.createIndex("dueAt", "dueAt");
+      }
+      if (!db.objectStoreNames.contains(STORES.cramPlan)) {
+        db.createObjectStore(STORES.cramPlan, { keyPath: "id" });
       }
       void tx;
     };
