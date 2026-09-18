@@ -109,6 +109,8 @@ interface QuestionCardProps {
   /** 收藏切换 */
   starred?: boolean;
   onToggleStar?: () => void;
+  /** 逻辑删除本题（练习页：太简单/已熟练的题移出做题池，可在「已删除」恢复） */
+  onDelete?: () => void;
   /** 题号显示，如 "12 / 683" */
   positionLabel?: string;
   showFigure?: boolean;
@@ -132,6 +134,7 @@ export function QuestionCard({
   onPrev,
   starred,
   onToggleStar,
+  onDelete,
   positionLabel,
   showFigure = true,
   answerOnly = false,
@@ -251,6 +254,18 @@ export function QuestionCard({
             <StarIcon filled={!!starred} />
             {/* 文字只在 ≥sm 显示，窄屏只留图标，避免 chips 换行占用题干空间 */}
             <span className="hidden sm:inline">{starred ? "已收藏" : "收藏"}</span>
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className={`btn btn-ghost btn-sm px-2 ${onToggleStar ? "" : "ml-auto"}`}
+            aria-label="删除本题"
+            title="删除本题（太简单/已熟练，可在「已删除」列表恢复）"
+          >
+            <TrashIcon />
+            <span className="hidden sm:inline">删除</span>
           </button>
         )}
       </div>
@@ -374,6 +389,27 @@ function StarIcon({ filled }: { filled: boolean }) {
       aria-hidden
     >
       <path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.7l5.4-.8z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      width={15}
+      height={15}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v5M14 11v5" />
     </svg>
   );
 }

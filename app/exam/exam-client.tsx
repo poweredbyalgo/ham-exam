@@ -57,7 +57,7 @@ export function ExamClient() {
 
 function ExamSetup() {
   const router = useRouter();
-  const { ready } = useStore();
+  const { ready, stats } = useStore();
 
   // 每个题库各自保留一份组卷配置：切换题库时回到该库的默认值，
   // 无需用 effect 回写 state（避免级联渲染）。
@@ -80,10 +80,13 @@ function ExamSetup() {
   );
   const setBank = useCallback((b: BankId) => setBankState(b), []);
 
+  // 组卷池：排除已逻辑删除的题（太简单/已熟练），已开考的 session 不追溯。
   const pool = useMemo(() => {
-    const all = getQuestions(bank);
+    const all = getQuestions(bank).filter(
+      (q) => !stats[questionKey(bank, q)]?.deleted,
+    );
     return config.includeMultiple ? all : all.filter((q) => q.type !== "multiple");
-  }, [bank, config.includeMultiple]);
+  }, [bank, config.includeMultiple, stats]);
 
   const start = () => {
     const rand = seededRandom(config.seed);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "./brand";
+import { FullscreenToggle } from "./fullscreen-toggle";
 import { ThemeToggle } from "./theme-toggle";
 
 /**
@@ -78,6 +79,10 @@ export function Nav() {
                 </Link>
               );
             })}
+            {/* 全屏按钮仅移动端显示：隐藏浏览器地址栏与底部工具栏，换取完整答题高度 */}
+            <span className="sm:hidden">
+              <FullscreenToggle />
+            </span>
             <ThemeToggle />
           </div>
         </div>

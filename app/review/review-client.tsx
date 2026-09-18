@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { QuestionCard, type AnswerState, evaluate } from "@/components/question-card";
+import { DeletedList, type DeletedRowData } from "@/components/deleted-list";
 import { ReviewQuestionList, type ReviewRowData } from "@/components/review-list";
 import { StickyActions } from "@/components/sticky-actions";
 import {
@@ -14,8 +15,10 @@ import {
   optionSpace,
 } from "@/lib/question-bank";
 import {
+  deletedKeys,
   masteredCount,
   recordAttempt,
+  restoreDeleted,
   setMastered,
   starredKeys,
   statOf,
@@ -25,7 +28,7 @@ import {
 import { useStore } from "@/lib/use-store";
 import type { BankId } from "@/lib/types";
 
-type Tab = "wrong" | "star" | "mastered";
+type Tab = "wrong" | "star" | "mastered" | "deleted";
 
 export function ReviewClient() {
   const params = useSearchParams();
@@ -46,11 +49,12 @@ export function ReviewClient() {
       return Object.values(stats)
         .filter(
           (s) =>
-            s.mastered && s.wrong > 0 && (bank === "all" || s.bank === bank),
+            s.mastered && s.wrong > 0 && !s.deleted && (bank === "all" || s.bank === bank),
         )
         .sort((a, b) => b.lastAt - a.lastAt)
         .map((s) => s.key);
     }
+    if (tab === "deleted") return deletedKeys(bank === "all" ? undefined : bank);
     return wrongBookKeys(bank === "all" ? undefined : bank);
   }, [ready, tab, bank, stats]);
 
@@ -89,10 +93,20 @@ export function ReviewClient() {
 
   const starredSet = new Set(starredKeys());
 
+  const deletedRows: DeletedRowData[] = [];
+  if (tab === "deleted") {
+    for (const key of keys) {
+      const located = getQuestion(key);
+      if (!located) continue;
+      deletedRows.push({ key, bank: located.bank, question: located.question });
+    }
+  }
+
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: "wrong", label: "错题本", count: wrongBookKeys().length },
     { id: "star", label: "收藏夹", count: starredKeys().length },
     { id: "mastered", label: "已掌握", count: masteredCount() },
+    { id: "deleted", label: "已删除", count: deletedKeys().length },
   ];
 
   return (
@@ -141,7 +155,7 @@ export function ReviewClient() {
         </div>
       </div>
 
-      {rows.length > 0 && (
+      {tab !== "deleted" && rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={buildHref(bank, tab, true)}
@@ -157,22 +171,37 @@ export function ReviewClient() {
         </div>
       )}
 
-      <section className="card p-4">
-        <ReviewQuestionList
-          bank={bank === "all" ? "A" : bank}
-          rows={rows}
-          emptyHint={
-            tab === "wrong"
-              ? "错题本是空的。开始练习后，答错的题会自动出现在这里。"
-              : tab === "star"
-                ? "还没有收藏题目。在练习界面点击「收藏」或按 S 键即可加入。"
-                : "还没有标记为已掌握的题目。"
-          }
-          onMastered={(key, mastered) => void setMastered(key, mastered)}
-          onToggleStar={(key) => void toggleStar(key)}
-          starredKeys={starredSet}
-        />
-      </section>
+      {tab === "deleted" ? (
+        <section className="card p-4">
+          <p className="text-xs leading-relaxed text-[var(--text-muted)]">
+            练习中删除的题目会集中在这里：它们不再出现在练习、背题、模拟考试与错题本中，
+            但历史作答与统计仍保留。恢复后即可重新遇到。
+          </p>
+          <DeletedList
+            rows={deletedRows}
+            onRestore={(ks) => void restoreDeleted(ks)}
+            onRestoreAll={() => void restoreDeleted(deletedRows.map((r) => r.key))}
+            emptyHint="没有已删除的题目。在练习界面点击题目右上角的「删除」即可把太简单或已熟练的题移到这里。"
+          />
+        </section>
+      ) : (
+        <section className="card p-4">
+          <ReviewQuestionList
+            bank={bank === "all" ? "A" : bank}
+            rows={rows}
+            emptyHint={
+              tab === "wrong"
+                ? "错题本是空的。开始练习后，答错的题会自动出现在这里。"
+                : tab === "star"
+                  ? "还没有收藏题目。在练习界面点击「收藏」或按 S 键即可加入。"
+                  : "还没有标记为已掌握的题目。"
+            }
+            onMastered={(key, mastered) => void setMastered(key, mastered)}
+            onToggleStar={(key) => void toggleStar(key)}
+            starredKeys={starredSet}
+          />
+        </section>
+      )}
 
       {rows.length === 0 && tab === "wrong" && (
         <div className="flex gap-2">
@@ -206,7 +235,7 @@ function RedoRunner({ bank, tab }: { bank: BankId | "all"; tab: Tab }) {
     if (tab === "star") return starredKeys(bank === "all" ? undefined : bank);
     if (tab === "mastered") {
       return Object.values(stats)
-        .filter((s) => s.mastered && s.wrong > 0 && (bank === "all" || s.bank === bank))
+        .filter((s) => s.mastered && s.wrong > 0 && !s.deleted && (bank === "all" || s.bank === bank))
         .map((s) => s.key);
     }
     return wrongBookKeys(bank === "all" ? undefined : bank);

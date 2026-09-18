@@ -30,6 +30,9 @@ yarn-error.log*
 # 部署平台
 .vercel
 
+# Trae IDE 工作区（计划文档等本地文件）
+/.trae/
+
 # TypeScript
 *.tsbuildinfo
 

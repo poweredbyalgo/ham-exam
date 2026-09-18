@@ -19,34 +19,95 @@ import {
   knowledgePoints,
   optionSpace,
   questionKey,
+  shuffle,
 } from "@/lib/question-bank";
 import {
   isStarred,
   recordAttempt,
   saveSeqCursor,
+  saveSeqQueue,
   seqCursor,
+  setDeleted,
   statOf,
   toggleStar,
   updateSettings,
 } from "@/lib/store";
 import { useStore } from "@/lib/use-store";
-import type { BankId } from "@/lib/types";
+import type { BankId, Question } from "@/lib/types";
 
 type Mode = "practice" | "memorize";
+
+/** 统一的练习页 URL 构造：bank/scope/mode + 随机/未做开关 + 可选题号 */
+function practiceHref(
+  bank: BankId,
+  scope: string,
+  mode: Mode,
+  rand: boolean,
+  unseen: boolean,
+  i?: number,
+): string {
+  const qs = new URLSearchParams({ bank });
+  if (scope !== "all") qs.set("scope", scope);
+  if (mode === "memorize") qs.set("mode", mode);
+  if (rand) qs.set("rand", "1");
+  if (unseen) qs.set("unseen", "1");
+  if (i !== undefined) qs.set("i", String(i));
+  return `/practice?${qs.toString()}`;
+}
 
 export function PracticeClient() {
   const params = useSearchParams();
   const router = useRouter();
-  const { ready, settings } = useStore();
+  const { ready, settings, stats, seq } = useStore();
 
   const bankParam = params.get("bank");
   const bank: BankId = isBankId(bankParam) ? bankParam : "A";
   const scope = params.get("scope") ?? "all";
   const mode: Mode = params.get("mode") === "memorize" ? "memorize" : "practice";
+  const rand = params.get("rand") === "1";
+  const unseen = params.get("unseen") === "1";
+  const queueMode = rand || unseen;
   const indexParam = params.get("i");
 
-  const pool = useMemo(() => filterByScope(bank, scope), [bank, scope]);
-  const seqId = `${bank}:${scope}:${mode}`;
+  // 各开关组合使用独立的队列与断点，互不干扰
+  const seqId = `${bank}:${scope}:${mode}${rand ? ":r" : ""}${unseen ? ":u" : ""}`;
+
+  // 基础题集：当前范围内、未被逻辑删除的题目
+  const basePool = useMemo(
+    () =>
+      filterByScope(bank, scope).filter(
+        (q) => !stats[questionKey(bank, q)]?.deleted,
+      ),
+    [bank, scope, stats],
+  );
+
+  // 持久化出题队列（随机 / 只看未做）；undefined 表示尚未生成
+  const queueKeys = seq[seqId]?.keys;
+
+  // 首次进入队列模式时生成乱序队列并落盘。
+  // 洗牌不在 render 期做（保持渲染纯函数），由 effect 写入 store 后重渲染。
+  useEffect(() => {
+    if (!ready || !queueMode || seq[seqId]) return;
+    const candidates = unseen
+      ? basePool.filter((q) => (stats[questionKey(bank, q)]?.attempts ?? 0) === 0)
+      : basePool;
+    void saveSeqQueue(
+      seqId,
+      shuffle(candidates.map((q) => questionKey(bank, q)), Math.random),
+      0,
+    );
+  }, [ready, queueMode, unseen, seq, seqId, basePool, stats, bank]);
+
+  // 出题序列：队列模式按持久化队列取题（并与基础题集求交，
+  // 保证刚删除/刚恢复的题立刻反映到当前序列）；否则按原始顺序。
+  const pool = useMemo(() => {
+    if (!queueMode || !queueKeys) return basePool;
+    const byKey = new Map(basePool.map((q) => [questionKey(bank, q), q]));
+    return queueKeys
+      .map((k) => byKey.get(k))
+      .filter((q): q is Question => q !== undefined);
+  }, [queueMode, queueKeys, basePool, bank]);
+  const queueReady = !queueMode || queueKeys !== undefined;
 
   // 位置不在 state 里重复保存，而是每次渲染推导：
   //   1) URL 的 ?i= 优先（可分享、可回退）
@@ -89,15 +150,37 @@ export function PracticeClient() {
       setState("idle");
       void saveSeqCursor(seqId, clamped);
       // 用 replace 避免把每个题号都压进浏览器历史
-      const qs = new URLSearchParams();
-      qs.set("bank", bank);
-      if (scope !== "all") qs.set("scope", scope);
-      if (mode === "memorize") qs.set("mode", mode);
-      qs.set("i", String(clamped));
-      router.replace(`/practice?${qs.toString()}`, { scroll: false });
+      router.replace(practiceHref(bank, scope, mode, rand, unseen, clamped), {
+        scroll: false,
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [pool.length, seqId, bank, scope, mode, router],
+    [pool.length, seqId, bank, scope, mode, rand, unseen, router],
+  );
+
+  // 只看未做：队列就是「剩余待做」集合。答完的题不立即移出——
+  // 否则判分反馈会被下一题顶掉——而是在「前进」时移出，
+  // 后续题目滑入当前下标，因此前进动作是 goTo(pos) 而非 pos+1。
+  const dropFromQueue = useCallback(
+    async (key: string) => {
+      if (!queueKeys) return;
+      if (!queueKeys.includes(key)) return;
+      const next = queueKeys.filter((k) => k !== key);
+      await saveSeqQueue(seqId, next, Math.min(pos, Math.max(0, next.length - 1)));
+    },
+    [queueKeys, seqId, pos],
+  );
+
+  /** 前进到下一题。answered 表示当前题已作答（unseen 模式下需先移出队列）。 */
+  const advance = useCallback(
+    (answered: boolean) => {
+      if (unseen && answered && question) {
+        void dropFromQueue(questionKey(bank, question)).then(() => goTo(pos));
+      } else {
+        goTo(pos + 1);
+      }
+    },
+    [unseen, question, bank, dropFromQueue, goTo, pos],
   );
 
   const submit = useCallback(async () => {
@@ -113,11 +196,49 @@ export function PracticeClient() {
       source: "practice",
     });
     if (result === "correct" && settings.autoNext) {
-      window.setTimeout(() => goTo(pos + 1), 420);
+      window.setTimeout(() => advance(true), 420);
     }
-  }, [question, space, selected, state, bank, pos, goTo, settings.autoNext]);
+  }, [question, space, selected, state, bank, advance, settings.autoNext]);
 
-  if (!ready) {
+  // 换一批：重新洗牌当前队列剩余题目并回到队首
+  const reshuffle = useCallback(() => {
+    const keys = queueKeys ?? basePool.map((q) => questionKey(bank, q));
+    void saveSeqQueue(seqId, shuffle(keys, Math.random), 0);
+    setPosOverride(0);
+    setSelected([]);
+    setState("idle");
+    router.replace(practiceHref(bank, scope, mode, rand, unseen, 0), {
+      scroll: false,
+    });
+  }, [queueKeys, basePool, seqId, bank, scope, mode, rand, unseen, router]);
+
+  // 重置未做：所有题（含已答过的）重新算作未做、重新入列。
+  // 只重建队列，不触碰 stats / attempts，错题本与统计不受影响。
+  const resetUnseen = useCallback(() => {
+    void saveSeqQueue(
+      seqId,
+      shuffle(basePool.map((q) => questionKey(bank, q)), Math.random),
+      0,
+    );
+    setPosOverride(0);
+    setSelected([]);
+    setState("idle");
+    router.replace(practiceHref(bank, scope, mode, rand, unseen, 0), {
+      scroll: false,
+    });
+  }, [basePool, seqId, bank, scope, mode, rand, unseen, router]);
+
+  // 逻辑删除当前题：写入删除标记，并从队列（若有）移出。
+  // 删除后题目必然退出 pool，序列左移，因此前进到同一位置。
+  const removeCurrent = useCallback(() => {
+    if (!question) return;
+    const key = questionKey(bank, question);
+    void setDeleted(key, true);
+    void dropFromQueue(key);
+    goTo(pos);
+  }, [question, bank, dropFromQueue, goTo, pos]);
+
+  if (!ready || !queueReady) {
     return (
       <div className="space-y-4">
         <div className="skeleton h-10 w-full rounded-lg" />
@@ -127,9 +248,10 @@ export function PracticeClient() {
   }
 
   if (pool.length === 0) {
-    return (
-      <EmptyState bank={bank} />
-    );
+    if (unseen && queueKeys && queueKeys.length === 0) {
+      return <UnseenDone bank={bank} scope={scope} mode={mode} onReset={resetUnseen} />;
+    }
+    return <EmptyState bank={bank} />;
   }
 
   const key = questionKey(bank, question);
@@ -141,13 +263,27 @@ export function PracticeClient() {
       {/* 桌面端筛选栏；手机端整条隐藏，改由 header 中的入口（MobileFilters
           通过 portal 挂到 #header-actions）以底部弹层形式提供同样的筛选。 */}
       <div className="card hidden flex-nowrap items-center gap-2 p-3 sm:flex">
-        <BankTabs bank={bank} mode={mode} />
+        <BankTabs bank={bank} mode={mode} rand={rand} unseen={unseen} />
         <div className="h-5 w-px bg-[var(--border)]" aria-hidden />
-        <ModeTabs bank={bank} scope={scope} mode={mode} />
-        <ScopePicker bank={bank} scope={scope} mode={mode} className="ml-auto min-w-0" />
+        <ModeTabs bank={bank} scope={scope} mode={mode} rand={rand} unseen={unseen} />
+        <QueueToggles bank={bank} scope={scope} mode={mode} rand={rand} unseen={unseen} />
+        <ScopePicker
+          bank={bank}
+          scope={scope}
+          mode={mode}
+          rand={rand}
+          unseen={unseen}
+          className="ml-auto min-w-0"
+        />
       </div>
 
-      <MobileFilters bank={bank} scope={scope} mode={mode} />
+      <MobileFilters
+        bank={bank}
+        scope={scope}
+        mode={mode}
+        rand={rand}
+        unseen={unseen}
+      />
 
       <div className="card p-3">
         <div className="flex items-center gap-3">
@@ -166,6 +302,23 @@ export function PracticeClient() {
             </span>
           )}
         </div>
+
+        {/* 队列模式的操作行：换一批重新洗牌；只看未做额外提供重置 */}
+        {queueMode && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2">
+            <button type="button" className="btn btn-sm" onClick={reshuffle}>
+              换一批
+            </button>
+            {unseen && (
+              <button type="button" className="btn btn-sm" onClick={resetUnseen}>
+                重置未做
+              </button>
+            )}
+            <span className="text-xs text-[var(--text-subtle)]">
+              {unseen ? "剩余未做" : "队列剩余"} {pool.length} 题
+            </span>
+          </div>
+        )}
 
         {/* 背题模式的展示方式切换：全部选项 / 只看答案。
             选择会写入设置，下次进背题模式默认沿用。 */}
@@ -210,10 +363,11 @@ export function PracticeClient() {
         answerOnly={mode === "memorize" && settings.recallAnswerOnly}
         keyboard={mode !== "memorize"}
         onSubmit={submit}
-        onNext={() => goTo(pos + 1)}
+        onNext={() => advance(state !== "idle")}
         onPrev={() => goTo(pos - 1)}
         starred={isStarred(key)}
         onToggleStar={() => void toggleStar(key)}
+        onDelete={removeCurrent}
         positionLabel={`第 ${pos + 1} 题`}
         showFigure={settings.showFigure}
       />
@@ -222,7 +376,11 @@ export function PracticeClient() {
         <p className="hidden px-1 text-xs leading-relaxed text-[var(--text-subtle)] sm:block">
           多选题需选全所有正确选项才算答对。
           <Link
-            href={`/browse?bank=${bank}&scope=${scope}&i=${pos}`}
+            href={
+              queueMode
+                ? `/browse?bank=${bank}&i=${question.index - 1}`
+                : `/browse?bank=${bank}&scope=${scope}&i=${pos}`
+            }
             className="ml-1 text-[var(--accent-text)] underline"
           >
             在题库中查看本题
@@ -275,8 +433,8 @@ export function PracticeClient() {
         <button
           type="button"
           className="btn flex-none px-3"
-          onClick={() => goTo(pos + 1)}
-          disabled={pos >= pool.length - 1}
+          onClick={() => advance(state !== "idle")}
+          disabled={pos >= pool.length - 1 && !(unseen && state !== "idle")}
           aria-label="下一题"
         >
           <span className="hidden sm:inline">下一题</span>
@@ -318,7 +476,17 @@ export function PracticeClient() {
   );
 }
 
-function BankTabs({ bank, mode }: { bank: BankId; mode: Mode }) {
+function BankTabs({
+  bank,
+  mode,
+  rand,
+  unseen,
+}: {
+  bank: BankId;
+  mode: Mode;
+  rand: boolean;
+  unseen: boolean;
+}) {
   return (
     <div
       className="flex flex-none items-center gap-0.5 rounded-lg bg-[var(--surface-2)] p-0.5"
@@ -328,7 +496,7 @@ function BankTabs({ bank, mode }: { bank: BankId; mode: Mode }) {
       {BANK_IDS.map((b) => (
         <Link
           key={b}
-          href={`/practice?bank=${b}${mode === "memorize" ? "&mode=memorize" : ""}`}
+          href={practiceHref(b, "all", mode, rand, unseen)}
           aria-current={b === bank ? "page" : undefined}
           className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
             b === bank
@@ -347,10 +515,14 @@ function ModeTabs({
   bank,
   scope,
   mode,
+  rand,
+  unseen,
 }: {
   bank: BankId;
   scope: string;
   mode: Mode;
+  rand: boolean;
+  unseen: boolean;
 }) {
   return (
     <div
@@ -359,7 +531,7 @@ function ModeTabs({
       aria-label="切换模式"
     >
       <Link
-        href={`/practice?bank=${bank}&scope=${scope}`}
+        href={practiceHref(bank, scope, "practice", rand, unseen)}
         aria-current={mode === "practice" ? "page" : undefined}
         className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
           mode === "practice"
@@ -370,7 +542,7 @@ function ModeTabs({
         练习
       </Link>
       <Link
-        href={`/practice?bank=${bank}&scope=${scope}&mode=memorize`}
+        href={practiceHref(bank, scope, "memorize", rand, unseen)}
         aria-current={mode === "memorize" ? "page" : undefined}
         className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
           mode === "memorize"
@@ -384,8 +556,56 @@ function ModeTabs({
   );
 }
 
+/** 随机 / 只看未做两个开关，样式与 ModeTabs 同款的紧凑分段控件 */
+function QueueToggles({
+  bank,
+  scope,
+  mode,
+  rand,
+  unseen,
+}: {
+  bank: BankId;
+  scope: string;
+  mode: Mode;
+  rand: boolean;
+  unseen: boolean;
+}) {
+  return (
+    <div
+      className="flex flex-none items-center gap-0.5 rounded-lg bg-[var(--surface-2)] p-0.5"
+      role="group"
+      aria-label="出题方式"
+    >
+      <Link
+        href={practiceHref(bank, scope, mode, !rand, unseen)}
+        aria-pressed={rand}
+        title="随机练习：乱序出题，顺序保存，可换一批"
+        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+          rand
+            ? "bg-[var(--surface)] text-[var(--text)] shadow-sm"
+            : "text-[var(--text-muted)]"
+        }`}
+      >
+        随机
+      </Link>
+      <Link
+        href={practiceHref(bank, scope, mode, rand, !unseen)}
+        aria-pressed={unseen}
+        title="只看未做：只刷没答过的题，答一题少一题，可重置"
+        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+          unseen
+            ? "bg-[var(--surface)] text-[var(--text)] shadow-sm"
+            : "text-[var(--text-muted)]"
+        }`}
+      >
+        未做
+      </Link>
+    </div>
+  );
+}
+
 /**
- * 手机端筛选入口：把题库 / 模式 / 范围收进 header 右侧的一个按钮，
+ * 手机端筛选入口：把题库 / 模式 / 范围 / 随机·未做收进 header 右侧的一个按钮，
  * 点击后以底部弹层展示全部筛选。页面顶部不再占用一整行卡片，
  * 题目从折叠线上方就开始显示。
  *
@@ -396,10 +616,14 @@ function MobileFilters({
   bank,
   scope,
   mode,
+  rand,
+  unseen,
 }: {
   bank: BankId;
   scope: string;
   mode: Mode;
+  rand: boolean;
+  unseen: boolean;
 }) {
   const router = useRouter();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -425,9 +649,7 @@ function MobileFilters({
 
   const pick = (nextScope: string) => {
     setOpen(false);
-    const qs = new URLSearchParams({ bank, scope: nextScope });
-    if (mode === "memorize") qs.set("mode", "memorize");
-    router.push(`/practice?${qs.toString()}`);
+    router.push(practiceHref(bank, nextScope, mode, rand, unseen));
   };
 
   const trigger = (
@@ -443,6 +665,8 @@ function MobileFilters({
         ·
       </span>
       <span className="flex-none">{mode === "memorize" ? "背题" : "练习"}</span>
+      {rand && <span className="flex-none text-[var(--accent-text)]">随</span>}
+      {unseen && <span className="flex-none text-[var(--accent-text)]">未</span>}
       <span aria-hidden className="text-[var(--text-subtle)]">
         ·
       </span>
@@ -476,8 +700,9 @@ function MobileFilters({
           </button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <BankTabs bank={bank} mode={mode} />
-          <ModeTabs bank={bank} scope={scope} mode={mode} />
+          <BankTabs bank={bank} mode={mode} rand={rand} unseen={unseen} />
+          <ModeTabs bank={bank} scope={scope} mode={mode} rand={rand} unseen={unseen} />
+          <QueueToggles bank={bank} scope={scope} mode={mode} rand={rand} unseen={unseen} />
         </div>
         <div className="mt-3 border-t border-[var(--border)] pt-2">
           <ScopeOptions bank={bank} scope={scope} onPick={pick} />
@@ -529,6 +754,39 @@ function RedoIcon() {
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <path d="M3 3v5h5" />
     </svg>
+  );
+}
+
+/** 只看未做：当前范围内未做题已全部完成 */
+function UnseenDone({
+  bank,
+  scope,
+  mode,
+  onReset,
+}: {
+  bank: BankId;
+  scope: string;
+  mode: Mode;
+  onReset: () => void;
+}) {
+  return (
+    <div className="card p-6 text-center">
+      <p className="text-sm font-medium">当前范围内的未做题已全部完成 🎉</p>
+      <p className="mt-1 text-xs text-[var(--text-subtle)]">
+        答错过的题已自动进入错题本；也可以重置，把所有题重新算作未做再刷一轮。
+      </p>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <button type="button" className="btn btn-primary" onClick={onReset}>
+          重置未做
+        </button>
+        <Link href={practiceHref(bank, scope, mode, false, false)} className="btn">
+          返回顺序练习
+        </Link>
+        <Link href="/review" className="btn btn-ghost">
+          查看错题本
+        </Link>
+      </div>
+    </div>
   );
 }
 

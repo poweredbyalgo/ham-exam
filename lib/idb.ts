@@ -14,7 +14,13 @@
  * localStorage 的 `crac-practice:theme` 键同理（见 lib/theme-script.ts）。
  */
 export const DB_NAME = "crac-practice";
-export const DB_VERSION = 2;
+/**
+ * 版本只能升不能降：被回退的「冲刺模式」曾把版本升到 3 并新增
+ * `cram` / `cramPlan` 两个 objectStore，已用 v3 库的浏览器若以更低
+ * 版本打开会抛 VersionError（"The requested version is less than the
+ * existing version"），因此这里保持 4 并在升级时清理遗留 store。
+ */
+export const DB_VERSION = 4;
 
 export const STORES = {
   /** 每题累计状态：错题、收藏、正确率 */
@@ -77,6 +83,11 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORES.settings)) {
         db.createObjectStore(STORES.settings, { keyPath: "id" });
+      }
+      // 清理已回退的「冲刺模式」遗留 store（v3 时代写入，现已无代码读取）
+      if (db.objectStoreNames.contains("cram")) db.deleteObjectStore("cram");
+      if (db.objectStoreNames.contains("cramPlan")) {
+        db.deleteObjectStore("cramPlan");
       }
       void tx;
     };

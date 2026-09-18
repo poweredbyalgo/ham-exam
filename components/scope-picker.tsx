@@ -132,11 +132,15 @@ export function ScopePicker({
   bank,
   scope,
   mode,
+  rand = false,
+  unseen = false,
   className = "",
 }: {
   bank: BankId;
   scope: string;
   mode: string;
+  rand?: boolean;
+  unseen?: boolean;
   className?: string;
 }) {
   const router = useRouter();
@@ -165,6 +169,8 @@ export function ScopePicker({
     setOpen(false);
     const qs = new URLSearchParams({ bank, scope: next });
     if (mode === "memorize") qs.set("mode", "memorize");
+    if (rand) qs.set("rand", "1");
+    if (unseen) qs.set("unseen", "1");
     router.push(`/practice?${qs.toString()}`);
   };
 

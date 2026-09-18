@@ -106,6 +106,10 @@ export interface QuestionStat {
   starred: boolean;
   /** 已被移出错题本（用户确认掌握） */
   mastered: boolean;
+  /** 逻辑删除：练习/背题/考试/错题本均不再出现，可在「已删除」列表恢复 */
+  deleted?: boolean;
+  /** 删除时间戳，用于已删除列表排序 */
+  deletedAt?: number;
 }
 
 /** 顺序练习的断点续做位置 */
@@ -114,6 +118,8 @@ export interface SeqProgress {
   id: string;
   cursor: number;
   updatedAt: number;
+  /** 随机练习 / 只看未做模式的持久化出题队列（题目定位键，按出题顺序） */
+  keys?: string[];
 }
 
 export type ThemePreference = "system" | "light" | "dark";

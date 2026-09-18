@@ -50,8 +50,14 @@ export default function HomePage() {
           <ModeCard
             href="/practice"
             title="顺序练习"
-            desc="按题库原始顺序或指定章节逐题练习，自动记录断点，下次接着做。"
+            desc="按题库原始顺序或指定章节逐题练习，自动记录断点，下次接着做。太简单的题可随时删除，在「已删除」列表恢复。"
             icon="📖"
+          />
+          <ModeCard
+            href="/practice?rand=1"
+            title="随机练习"
+            desc="乱序出题，顺序保存、断点续做，随时「换一批」重新洗牌；也可开启「只看未做」专刷没答过的题。"
+            icon="🎲"
           />
           <ModeCard
             href="/exam"

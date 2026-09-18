@@ -230,6 +230,56 @@ export async function toggleStar(key: string): Promise<void> {
   await idbPut(STORES.stats, next).catch(() => undefined);
 }
 
+/**
+ * 逻辑删除 / 恢复题目。
+ * 仿照 toggleStar：stat 不存在时创建基础行，保证删除状态可持久化。
+ */
+export async function setDeleted(key: string, deleted: boolean): Promise<void> {
+  const prev = state.stats[key];
+  const located = getQuestion(key);
+  if (!prev && !located) return;
+  const base: QuestionStat =
+    prev ??
+    {
+      key,
+      bank: located!.bank,
+      questionId: located!.question.questionId,
+      knowledgePoint: located!.question.knowledgePoint,
+      attempts: 0,
+      correct: 0,
+      wrong: 0,
+      lastOutcome: "skipped",
+      lastAt: Date.now(),
+      streak: 0,
+      starred: false,
+      mastered: false,
+    };
+  const next: QuestionStat = {
+    ...base,
+    deleted,
+    deletedAt: deleted ? Date.now() : undefined,
+  };
+  emit({ stats: { ...state.stats, [key]: next } });
+  await idbPut(STORES.stats, next).catch(() => undefined);
+}
+
+/** 批量恢复（已删除列表的「恢复所选 / 全部恢复」） */
+export async function restoreDeleted(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const nextStats = { ...state.stats };
+  const rows: QuestionStat[] = [];
+  for (const key of keys) {
+    const prev = nextStats[key];
+    if (!prev || !prev.deleted) continue;
+    const next: QuestionStat = { ...prev, deleted: false, deletedAt: undefined };
+    nextStats[key] = next;
+    rows.push(next);
+  }
+  if (rows.length === 0) return;
+  emit({ stats: nextStats });
+  await idbPutMany(STORES.stats, rows).catch(() => undefined);
+}
+
 export async function setMastered(key: string, mastered: boolean): Promise<void> {
   const prev = state.stats[key];
   if (!prev) return;
@@ -248,24 +298,38 @@ export function isStarred(key: string): boolean {
   return state.stats[key]?.starred ?? false;
 }
 
-/** 错题本：做错过且未标记为已掌握 */
+export function isDeleted(key: string): boolean {
+  return state.stats[key]?.deleted ?? false;
+}
+
+/** 已删除题目列表，按删除时间倒序 */
+export function deletedKeys(bank?: BankId): string[] {
+  return Object.values(state.stats)
+    .filter((s) => s.deleted && (!bank || s.bank === bank))
+    .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
+    .map((s) => s.key);
+}
+
+/** 错题本：做错过且未标记为已掌握（已删除的题不计入） */
 export function wrongBookKeys(bank?: BankId): string[] {
   return Object.values(state.stats)
-    .filter((s) => s.wrong > 0 && !s.mastered && (!bank || s.bank === bank))
+    .filter(
+      (s) => s.wrong > 0 && !s.mastered && !s.deleted && (!bank || s.bank === bank),
+    )
     .sort((a, b) => b.lastAt - a.lastAt)
     .map((s) => s.key);
 }
 
 export function starredKeys(bank?: BankId): string[] {
   return Object.values(state.stats)
-    .filter((s) => s.starred && (!bank || s.bank === bank))
+    .filter((s) => s.starred && !s.deleted && (!bank || s.bank === bank))
     .sort((a, b) => b.lastAt - a.lastAt)
     .map((s) => s.key);
 }
 
 export function masteredCount(bank?: BankId): number {
   return Object.values(state.stats).filter(
-    (s) => s.mastered && s.wrong > 0 && (!bank || s.bank === bank),
+    (s) => s.mastered && s.wrong > 0 && !s.deleted && (!bank || s.bank === bank),
   ).length;
 }
 
@@ -385,7 +449,23 @@ export function seqCursor(id: string): number {
 }
 
 export async function saveSeqCursor(id: string, cursor: number): Promise<void> {
-  const row: SeqProgress = { id, cursor, updatedAt: Date.now() };
+  const row: SeqProgress = { ...state.seq[id], id, cursor, updatedAt: Date.now() };
+  emit({ seq: { ...state.seq, [id]: row } });
+  await idbPut(STORES.seq, row).catch(() => undefined);
+}
+
+/** 随机练习 / 只看未做：读取持久化出题队列 */
+export function seqQueue(id: string): string[] | undefined {
+  return state.seq[id]?.keys;
+}
+
+/** 一次写入出题队列与游标（洗牌生成、换一批、答后移出时用） */
+export async function saveSeqQueue(
+  id: string,
+  keys: string[],
+  cursor: number,
+): Promise<void> {
+  const row: SeqProgress = { id, cursor, keys, updatedAt: Date.now() };
   emit({ seq: { ...state.seq, [id]: row } });
   await idbPut(STORES.seq, row).catch(() => undefined);
 }
