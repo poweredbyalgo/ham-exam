@@ -16,6 +16,14 @@ const nextConfig: NextConfig = {
   output: "export",
 
   /**
+   * 应用根路径（等价于 Vite 的 base）：小写仓库名，部署在
+   * `https://<user>.github.io/ham-exam/` 这类子路径下时，
+   * Next 会自动为路由与 `_next` 资源加上该前缀。
+   * 若部署到域名根路径，置为空字符串即可。
+   */
+  basePath: "/ham-exam",
+
+  /**
    * 静态导出目录：Next.js 默认写 `out/`，这里改为 `dist/`。
    *
    * 机制（next/dist/build/index.js）：`output: "export"` 时 Next 读取
